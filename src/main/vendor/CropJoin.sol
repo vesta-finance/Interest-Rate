@@ -16,9 +16,9 @@
 
 pragma solidity ^0.8.17;
 
-import { Math } from "./lib/Math.sol";
-import { IERC20 } from "./interface/IERC20.sol";
-import { IVatLike } from "./interface/IVatLike.sol";
+import { Math } from "../lib/Math.sol";
+import { IERC20 } from "../interface/IERC20.sol";
+import { IVatLike } from "../interface/IVatLike.sol";
 
 // receives tokens and shares them among holders
 abstract contract CropJoin {
@@ -78,14 +78,7 @@ abstract contract CropJoin {
 		return Math.sub(bonus.balanceOf(address(this)), stock);
 	}
 
-	function harvest(address from, address to) internal {
-		if (total > 0) share = Math.add(share, Math.rdiv(crop(), total));
-
-		uint256 last = crops[from];
-		uint256 curr = Math.rmul(stake[from], share);
-		if (curr > last) require(bonus.transfer(to, curr - last));
-		stock = bonus.balanceOf(address(this));
-	}
+	function harvest(address from, address to) internal virtual;
 
 	function join(address urn, uint256 val) internal virtual {
 		harvest(urn, urn);

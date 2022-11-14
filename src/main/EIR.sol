@@ -1,7 +1,6 @@
 pragma solidity ^0.8.17;
 
 import "./lib/FullMath.sol";
-import "./VST.sol";
 import "./CropJoinAdapter.sol";
 import "./interface/IPriceFeedV2.sol";
 
