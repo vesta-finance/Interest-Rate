@@ -6,9 +6,9 @@ import "./vendor/CropJoin.sol";
 
 // NOTE! - this is not an ERC20 token. transfer is not supported.
 contract CropJoinAdapter is CropJoin {
-	string public constant name = "EIR";
-	string public constant symbol = "LUSDETH";
 	uint256 public constant decimals = 18;
+	string public  name;
+	string public  symbol;
 
 	event Transfer(
 		address indexed _from,
@@ -16,9 +16,12 @@ contract CropJoinAdapter is CropJoin {
 		uint256 _value
 	);
 
-	constructor(address _distributedToken)
-		CropJoin(address(new Dummy()), "B.AMM", address(new DummyGem()), _distributedToken)
-	{}
+	constructor(string memory _moduleName, string memory _moduleSymbol, address _distributedToken)
+		CropJoin(address(new Dummy()), "VESTA.EIR", address(new DummyGem()), _distributedToken)
+	{
+	name = _moduleName;
+	symbol = _moduleSymbol;
+	}
 
 	function netAssetValuation() public view override returns (uint256) {
 		return total;
