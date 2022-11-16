@@ -5,10 +5,12 @@ pragma solidity ^0.8.17;
 import "./vendor/CropJoin.sol";
 
 // NOTE! - this is not an ERC20 token. transfer is not supported.
-contract CropJoinAdapter is CropJoin {
+abstract contract CropJoinAdapter is CropJoin {
 	uint256 public constant decimals = 18;
-	string public  name;
-	string public  symbol;
+	string public name;
+	string public symbol;
+
+	uint256[49] private __gap;
 
 	event Transfer(
 		address indexed _from,
@@ -16,11 +18,19 @@ contract CropJoinAdapter is CropJoin {
 		uint256 _value
 	);
 
-	constructor(string memory _moduleName, string memory _moduleSymbol, address _distributedToken)
-		CropJoin(address(new Dummy()), "VESTA.EIR", address(new DummyGem()), _distributedToken)
-	{
-	name = _moduleName;
-	symbol = _moduleSymbol;
+	function __INIT_ADAPTOR(
+		string memory _moduleName,
+		string memory _moduleSymbol,
+		address _distributedToken
+	) internal onlyInitializing {
+		__INIT_CROP(
+			address(new Dummy()),
+			"VESTA.EIR",
+			address(new DummyGem()),
+			_distributedToken
+		);
+		name = _moduleName;
+		symbol = _moduleSymbol;
 	}
 
 	function netAssetValuation() public view override returns (uint256) {
@@ -44,16 +54,6 @@ contract CropJoinAdapter is CropJoin {
 		exit(owner, value);
 		emit Transfer(owner, address(0), value);
 	}
-
-	function harvest(address from, address to) internal override{
-		if (total > 0) share = Math.add(share, Math.rdiv(crop(), total));
-
-		uint256 last = crops[from];
-		uint256 curr = Math.rmul(stake[from], share);
-		if (curr > last) require(bonus.transfer(to, curr - last));
-		stock = bonus.balanceOf(address(this));
-	}
-
 }
 
 contract Dummy {

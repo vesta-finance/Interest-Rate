@@ -19,14 +19,15 @@ pragma solidity ^0.8.17;
 import { Math } from "../lib/Math.sol";
 import { IERC20 } from "../interface/IERC20.sol";
 import { IVatLike } from "../interface/IVatLike.sol";
+import { OwnableUpgradeable } from "openzeppelin-contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 // receives tokens and shares them among holders
-abstract contract CropJoin {
-	IVatLike public immutable vat; // cdp engine
-	bytes32 public immutable ilk; // collateral type
-	IERC20 public immutable gem; // collateral token
-	uint256 public immutable dec; // gem decimals
-	IERC20 public immutable bonus; // rewards token
+abstract contract CropJoin is OwnableUpgradeable {
+	IVatLike public vat; // cdp engine
+	bytes32 public ilk; // collateral type
+	IERC20 public gem; // collateral token
+	uint256 public dec; // gem decimals
+	IERC20 public bonus; // rewards token
 
 	uint256 public share; // crops per gem    [ray]
 	uint256 public total; // total gems       [wad]
@@ -35,8 +36,10 @@ abstract contract CropJoin {
 	mapping(address => uint256) public crops; // crops per user  [wad]
 	mapping(address => uint256) public stake; // gems per user   [wad]
 
-	uint256 internal immutable to18ConversionFactor;
-	uint256 internal immutable toGemConversionFactor;
+	uint256 internal to18ConversionFactor;
+	uint256 internal toGemConversionFactor;
+
+	uint256[49] private __gap;
 
 	// --- Events ---
 	event Join(uint256 val);
@@ -44,12 +47,12 @@ abstract contract CropJoin {
 	event Flee();
 	event Tack(address indexed src, address indexed dst, uint256 wad);
 
-	constructor(
+	function __INIT_CROP(
 		address vat_,
 		bytes32 ilk_,
 		address gem_,
 		address bonus_
-	) {
+	) internal onlyInitializing {
 		vat = IVatLike(vat_);
 		ilk = ilk_;
 		gem = IERC20(gem_);

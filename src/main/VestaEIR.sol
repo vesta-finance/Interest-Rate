@@ -21,15 +21,23 @@ contract VestaEIR is CropJoinAdapter {
 	uint256 public currentEIR;
 	uint256 public lastUpdate;
 	uint256 public totalDebt;
-	uint256 public totalEmited;
 	uint8 public currentRisk;
+
 	mapping(address => uint256) public balances;
 	mapping(address => uint256) public emitedRate;
 
 	IERC20 public vst;
 	IVSTOperator public vstOperator;
+	address public vestaSafe;
 
-	constructor(address _vst, address _vstOperator, string memory _moduleName, string memory _moduleSymbol) CropJoinAdapter(_moduleName,_moduleSymbol,_vst) {
+	function setUp(
+		address _vst,
+		address _vstOperator,
+		string memory _moduleName,
+		string memory _moduleSymbol
+	) external initializer {
+		__INIT_ADAPTOR(_moduleName, _moduleSymbol, _vst);
+
 		vst = IERC20(_vst);
 		vstOperator = IVSTOperator(_vstOperator);
 	}
@@ -64,6 +72,54 @@ contract VestaEIR is CropJoinAdapter {
 		mint(msg.sender, newShare);
 
 		totalDebt -= _debt;
+	}
+
+	function updateEIR(uint256 _eir) external {
+		if (_eir == 0) return;
+
+		uint256 lastDebt = totalDebt;
+		uint256 minuteDifference = (block.timestamp - lastUpdate) / 1 minutes;
+
+		if (minuteDifference == 0 && currentEIR != _eir) {
+			lastUpdate = block.timestamp;
+			currentEIR = _eir;
+			return;
+		}
+
+		totalDebt += _compound(
+			currentEIR,
+			totalDebt,
+			minuteDifference * YEAR_MINUTE
+		);
+
+		lastUpdate = block.timestamp;
+		currentEIR = _eir;
+
+		vstOperator.mint(address(this), totalDebt - lastDebt);
+	}
+
+	function harvest(address from, address to) internal override {
+		if (total > 0) share = Math.add(share, Math.rdiv(crop(), total));
+
+		uint256 last = crops[from];
+		uint256 curr = Math.rmul(stake[from], share);
+		if (curr > last) {
+			vst.transfer(vestaSafe, curr - last);
+		}
+		stock = bonus.balanceOf(address(this));
+	}
+
+	function _compound(
+		uint256 _eir,
+		uint256 _debt,
+		uint256 _timeInYear
+	) internal pure returns (uint256) {
+		return
+			FullMath.mulDiv(
+				_debt,
+				COMPOUND.pow((_eir * 100) * _timeInYear),
+				1e18
+			);
 	}
 
 	function getUnclaimedEIR(address user) public returns (uint256) {
@@ -106,57 +162,6 @@ contract VestaEIR is CropJoinAdapter {
 
 		int256 exp = (-1.0397e4 * P);
 		return uint256(FullMath.mulDivRoundingUp(a, uint256(exp.exp()), 1e20)); // Scale to BPS
-	}
-
-	function updateEIR(uint256 _eir) external {
-		if (_eir == 0) return;
-
-		uint256 lastDebt = totalDebt;
-		uint256 minuteDifference = (block.timestamp - lastUpdate) / 1 minutes;
-
-		if (minuteDifference == 0 && currentEIR != _eir) {
-			lastUpdate = block.timestamp;
-			currentEIR = _eir;
-			return;
-		}
-
-		totalDebt += _compound(
-			currentEIR,
-			totalDebt,
-			minuteDifference * YEAR_MINUTE
-		);
-
-		lastUpdate = block.timestamp;
-		currentEIR = _eir;
-
-		vstOperator.mint(address(this), totalDebt - lastDebt);
-	}
-
-	function harvest(address from, address to) internal override{
-		if (total > 0) share = Math.add(share, Math.rdiv(crop(), total));
-
-		uint256 last = crops[from];
-		uint256 curr = Math.rmul(stake[from], share);
-		if (curr > last) {
-			uint256 emitted = curr - last;
-			totalEmited += emitted;
-			balances[to] += emitted;
-		}
-		stock = bonus.balanceOf(address(this)) - totalEmited;
-	}
-
-
-	function _compound(
-		uint256 _eir,
-		uint256 _debt,
-		uint256 _timeInYear
-	) internal pure returns (uint256) {
-		return
-			FullMath.mulDiv(
-				_debt,
-				COMPOUND.pow((_eir * 100) * _timeInYear),
-				1e18
-			);
 	}
 }
 
