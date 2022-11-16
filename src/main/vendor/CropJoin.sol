@@ -81,10 +81,7 @@ abstract contract CropJoin is OwnableUpgradeable {
 		return Math.sub(bonus.balanceOf(address(this)), stock);
 	}
 
-	function harvest(address from, address to) internal virtual;
-
 	function join(address urn, uint256 val) internal virtual {
-		harvest(urn, urn);
 		if (val > 0) {
 			uint256 wad = Math.wdiv(
 				Math.mul(val, to18ConversionFactor),
@@ -106,7 +103,6 @@ abstract contract CropJoin is OwnableUpgradeable {
 	}
 
 	function exit(address guy, uint256 val) internal virtual {
-		harvest(msg.sender, guy);
 		if (val > 0) {
 			uint256 wad = Math.wdivup(
 				Math.mul(val, to18ConversionFactor),
