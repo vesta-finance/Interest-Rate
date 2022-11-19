@@ -24,6 +24,11 @@ contract VestaEIRTest is BaseTest {
 		uint256 expectedEIR;
 	}
 
+	bytes private constant REVERT_NOT_TROVEMANAGER =
+		abi.encodeWithSignature("NotTroveManager()");
+	bytes private constant REVERT_CANNOT_BE_ZERO =
+		abi.encodeWithSignature("CannotBeZero()");
+
 	string private constant KEY_USERS = ".users";
 	string private constant KEY_SEQUENCES = ".sequences";
 	string private constant KEY_SEQUENCES_COUNT = ".sequencesCount";
@@ -39,11 +44,14 @@ contract VestaEIRTest is BaseTest {
 	uint256 private constant YEAR_MINUTE = 1.901285e6;
 	uint256 private constant TOLERANCE = 3; //0.003%
 
+	address private owner = generateAddress("Owner", false);
 	address private userA = generateAddress("userA", false);
 	address private userB = generateAddress("userB", false);
 	address private userC = generateAddress("userC", false);
 	address private mockSafetyVault = generateAddress("Safety Vault", true);
 	address private mockPriceFeed = generateAddress("Price Feed", true);
+	address private mockTroveManager =
+		generateAddress("Trove Manager", true);
 	address private mockVST;
 	address private mockVSTOperator;
 
@@ -55,17 +63,84 @@ contract VestaEIRTest is BaseTest {
 		mockVST = address(new MockERC20("VST", "VST", 18));
 		mockVSTOperator = address(new VSTOperatorMock(mockVST));
 
-		underTest = new VestaEIR();
+		_mockVSTPrice(1e18);
 
+		underTest = new VestaEIR();
 		underTest.setUp(
 			mockVST,
 			mockVSTOperator,
 			mockPriceFeed,
 			mockSafetyVault,
+			mockTroveManager,
 			"Vesta EIR Test Module",
 			"vETM",
 			0
 		);
+	}
+
+	function test_setup_thenCallerIsOwner() external prankAs(owner) {
+		underTest = new VestaEIR();
+		underTest.setUp(
+			mockVST,
+			mockVSTOperator,
+			mockPriceFeed,
+			mockSafetyVault,
+			mockTroveManager,
+			"Vesta EIR Test Module",
+			"vETM",
+			0
+		);
+
+		assertEq(underTest.owner(), owner);
+	}
+
+	function test_setup_thenContractCorrectlyConfigured()
+		external
+		prankAs(owner)
+	{
+		underTest = new VestaEIR();
+		underTest.setUp(
+			mockVST,
+			mockVSTOperator,
+			mockPriceFeed,
+			mockSafetyVault,
+			mockTroveManager,
+			"Vesta EIR Test Module",
+			"vETM",
+			1
+		);
+
+		assertEq(address(underTest.vst()), mockVST);
+		assertEq(address(underTest.vstOperator()), mockVSTOperator);
+		assertEq(address(underTest.oracle()), mockPriceFeed);
+		assertEq(underTest.safetyVault(), mockSafetyVault);
+		assertEq(underTest.troveManager(), mockTroveManager);
+		assertEq(underTest.lastUpdate(), block.timestamp);
+		assertEq(underTest.risk(), 1);
+		assertEq(underTest.currentEIR(), 75);
+	}
+
+	function test_setup_thenAbstractContractsConfigured()
+		external
+		prankAs(owner)
+	{
+		underTest = new VestaEIR();
+		underTest.setUp(
+			mockVST,
+			mockVSTOperator,
+			mockPriceFeed,
+			mockSafetyVault,
+			mockTroveManager,
+			"Vesta EIR Test Module",
+			"vETM",
+			1
+		);
+
+		assertEq(underTest.name(), "Vesta EIR Test Module");
+		assertEq(underTest.symbol(), "vETM");
+		assertTrue(address(underTest.vat()) != address(0));
+		assertEq(underTest.ilk(), bytes32("VESTA.EIR"));
+		assertTrue(address(underTest.gem()) != address(0));
 	}
 
 	function test_getEIR_thenIsValid() external {
@@ -82,8 +157,129 @@ contract VestaEIRTest is BaseTest {
 		assertEq(underTest.getEIR(2, 1.05e18), 1);
 	}
 
+	function test_increaseDebt_asUser_thenReverts() external prankAs(userA) {
+		vm.expectRevert(REVERT_NOT_TROVEMANAGER);
+		underTest.increaseDebt(userA, 1e18);
+	}
+
+	function test_increaseDebt_asTroveManager_thenCallUpdateEIR()
+		external
+		prankAs(mockTroveManager)
+	{
+		_mockVSTPrice(0.95e18);
+		underTest.increaseDebt(userA, 1e18);
+
+		assertEq(underTest.currentEIR(), 9051);
+	}
+
+	function test_increaseDebt_asTroveManager_givenUserA_whenSystemEmpty_thenUpdateSystem()
+		external
+		prankAs(mockTroveManager)
+	{
+		uint256 debt = 992.18e18;
+		uint256 expectedShare = 1e18;
+		uint256 emittedInterest = underTest.increaseDebt(userA, debt);
+
+		assertEq(underTest.stake(userA), expectedShare);
+		assertEq(underTest.getDebtOf(userA), debt);
+		assertEq(underTest.balanceOf(userA), expectedShare);
+		assertEq(underTest.totalDebt(), debt);
+		assertEq(emittedInterest, 0);
+	}
+
+	function test_increaseDebt_asTroveManager_givenUserB_whenSystemIsNotEmpty_thenGivesCorrectShare()
+		external
+		prankAs(mockTroveManager)
+	{
+		uint256 debtUserA = 9823.1e18;
+		uint256 debtUserB = 772e18;
+
+		underTest.increaseDebt(userA, debtUserA);
+		underTest.increaseDebt(userB, debtUserB);
+
+		uint256 expectShareA = 1e18;
+		uint256 expectShareB = ((expectShareA * debtUserB) / debtUserA);
+
+		assertEq(underTest.total(), expectShareA + expectShareB);
+		assertEq(underTest.stake(userB), expectShareB);
+	}
+
+	function test_increaseDebt_asTroveManager_givenUserA_whenNotFirstTimeTimeAndTimePassed_thenApplyInterestRate()
+		external
+		prankAs(mockTroveManager)
+	{
+		uint256 debt = 764.23e18;
+		underTest.increaseDebt(userA, debt);
+
+		skip(1 hours);
+
+		uint256 interestRateAdded = underTest.increaseDebt(userA, 1e18);
+
+		assertTrue(interestRateAdded != 0);
+	}
+
+	function test_decreaseDebt_asUser_thenReverts() external prankAs(userA) {
+		vm.expectRevert(REVERT_NOT_TROVEMANAGER);
+		underTest.decreaseDebt(userA, 1e18);
+	}
+
+	function test_decreaseDebt_asTroveManager_givenZeroDebt_thenReverts()
+		external
+		prankAs(mockTroveManager)
+	{
+		vm.expectRevert(REVERT_CANNOT_BE_ZERO);
+		underTest.decreaseDebt(userA, 0);
+	}
+
+	function test_decreaseDebt_asTroveManager_givenUserWithNoDebt_thenReverts()
+		external
+		prankAs(mockTroveManager)
+	{
+		vm.expectRevert(stdError.arithmeticError);
+		underTest.decreaseDebt(userA, 1e18);
+	}
+
+	function test_decreaseDebt_asTroveManager_givenUserAWithDebt_thenDistributeAndUpdateShare()
+		external
+		prankAs(mockTroveManager)
+	{
+		uint256 debtA = 764.23e18;
+		uint256 withdrawalA = 100.23e18;
+		uint256 debtB = 76.23e18;
+		underTest.increaseDebt(userA, debtA);
+		underTest.increaseDebt(userB, debtB);
+
+		skip(1 hours);
+
+		underTest.updateEIR();
+		uint256 pendingEIRUserA = underTest.getNotEmittedInterestRate(userA);
+		uint256 totalDebt = underTest.totalDebt();
+		uint256 total = underTest.total();
+
+		uint256 interestRateAdded = underTest.decreaseDebt(userA, withdrawalA);
+
+		assertEq(
+			underTest.stake(userA),
+			(total * ((debtA + pendingEIRUserA) - withdrawalA)) / totalDebt
+		);
+		assertTrue(interestRateAdded != 0);
+	}
+
+	function test_exit_asUser_thenReverts() external prankAs(userA) {
+		vm.expectRevert(REVERT_NOT_TROVEMANAGER);
+		underTest.exit(userA);
+	}
+
+	function test_exit_asTroveManager_givenNonExistantUser_thenReverts()
+		external
+		prankAs(mockTroveManager)
+	{
+		underTest.exit(userA);
+	}
+
 	function test_getUserInterest_givenSpecificNumber_thenEqualsNumbers()
 		external
+		prankAs(mockTroveManager)
 	{
 		uint256 timePassedRaw = 30240;
 		uint256 debtOne = 308.279e18;
@@ -91,11 +287,8 @@ contract VestaEIRTest is BaseTest {
 
 		_mockVSTPrice(1e18);
 
-		vm.prank(userA);
-		underTest.increaseDebt(debtOne);
-
-		vm.prank(userB);
-		underTest.increaseDebt(debtTwo);
+		underTest.increaseDebt(userA, debtOne);
+		underTest.increaseDebt(userB, debtTwo);
 
 		skip(timePassedRaw * 1 minutes);
 
@@ -111,7 +304,7 @@ contract VestaEIRTest is BaseTest {
 
 	function test_getUserInterest_thenReturnsAccurateAmount()
 		external
-		prankAs(userA)
+		prankAs(mockTroveManager)
 	{
 		uint256 timePassedRaw = 52858980;
 		uint256 yearlyTime = _minuteToYear(timePassedRaw);
@@ -119,7 +312,7 @@ contract VestaEIRTest is BaseTest {
 		uint256 rate = 400;
 
 		_mockVSTPrice(0.98e18);
-		underTest.increaseDebt(debt);
+		underTest.increaseDebt(userA, debt);
 
 		skip(timePassedRaw * 1 minutes);
 
@@ -131,7 +324,7 @@ contract VestaEIRTest is BaseTest {
 
 	function test_getUserInterest_decimals_thenReturnsAccurateAmount()
 		external
-		prankAs(userA)
+		prankAs(mockTroveManager)
 	{
 		uint256 timePassedRaw = 52858980;
 		uint256 yearlyTime = _minuteToYear(timePassedRaw);
@@ -139,7 +332,7 @@ contract VestaEIRTest is BaseTest {
 		uint256 rate = 400;
 
 		_mockVSTPrice(0.98e18);
-		underTest.increaseDebt(debt);
+		underTest.increaseDebt(userA, debt);
 
 		skip(timePassedRaw * 1 minutes);
 
@@ -149,7 +342,7 @@ contract VestaEIRTest is BaseTest {
 		);
 	}
 
-	function test_EIR_singleTime() external prankAs(userA) {
+	function test_EIR_singleTime() external prankAs(mockTroveManager) {
 		uint256 rawMinuteA = 788940;
 		uint256 rawMinuteB = 262980;
 		uint256 rawMinuteC = 522111;
@@ -167,18 +360,15 @@ contract VestaEIRTest is BaseTest {
 		uint256 rate = 400;
 		_mockVSTPrice(0.98e18);
 
-		changePrank(userA);
-		underTest.increaseDebt(userA_debt);
+		underTest.increaseDebt(userA, userA_debt);
 
 		skip(rawMinuteA * 1 minutes);
 
-		changePrank(userB);
-		underTest.increaseDebt(userB_debt);
+		underTest.increaseDebt(userB, userB_debt);
 
 		skip(rawMinuteB * 1 minutes);
 
-		changePrank(userC);
-		underTest.increaseDebt(userC_debt);
+		underTest.increaseDebt(userC, userC_debt);
 
 		skip(rawMinuteC * 1 minutes);
 
@@ -204,7 +394,7 @@ contract VestaEIRTest is BaseTest {
 		);
 	}
 
-	function test_json_simulation_01() external prankAs(userA) {
+	function test_json_simulation_01() external prankAs(mockTroveManager) {
 		JsonSimulation memory simulation = _loadSimulation(
 			"/src/test/data/simulation_01.json"
 		);
@@ -225,11 +415,10 @@ contract VestaEIRTest is BaseTest {
 				uint256 callerId = sequence.callers[x];
 				address caller = vm.addr(callerId);
 
-				changePrank(caller);
 				if (sequence.deposits[x] != 0) {
 					amount = sequence.deposits[x];
 
-					underTest.increaseDebt(amount);
+					underTest.increaseDebt(caller, amount);
 					balances[callerId] += amount;
 				} else if (sequence.withdrawals[x] != 0) {
 					amount = sequence.withdrawals[x];
@@ -237,11 +426,11 @@ contract VestaEIRTest is BaseTest {
 					balances[callerId] += underTest.getNotEmittedInterestRate(
 						caller
 					);
-					underTest.decreaseDebt(amount);
+					underTest.decreaseDebt(caller, amount);
 					balances[callerId] -= amount;
 				}
 
-				assertEq(underTest.balances(caller), balances[callerId]);
+				assertEq(underTest.getDebtOf(caller), balances[callerId]);
 			}
 
 			for (uint256 u = 0; u < usersLength; ++u) {
@@ -271,8 +460,6 @@ contract VestaEIRTest is BaseTest {
 			),
 			abi.encode(_price)
 		);
-
-		underTest.updateEIR();
 	}
 
 	function _loadSimulation(string memory _jsonPath)

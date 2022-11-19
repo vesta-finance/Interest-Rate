@@ -20,14 +20,12 @@ abstract contract CropJoinAdapter is CropJoin {
 
 	function __INIT_ADAPTOR(
 		string memory _moduleName,
-		string memory _moduleSymbol,
-		address _distributedToken
+		string memory _moduleSymbol
 	) internal onlyInitializing {
 		__INIT_CROP(
 			address(new Dummy()),
 			"VESTA.EIR",
-			address(new DummyGem()),
-			_distributedToken
+			address(new DummyGem())
 		);
 		name = _moduleName;
 		symbol = _moduleSymbol;
@@ -45,13 +43,13 @@ abstract contract CropJoinAdapter is CropJoin {
 		balance = stake[owner];
 	}
 
-	function mint(address to, uint256 value) internal virtual {
-		join(to, value);
+	function _mint(address to, uint256 value) internal virtual {
+		_join(to, value);
 		emit Transfer(address(0), to, value);
 	}
 
-	function burn(address owner, uint256 value) internal virtual {
-		exit(owner, value);
+	function _burn(address owner, uint256 value) internal virtual {
+		_exit(owner, value);
 		emit Transfer(owner, address(0), value);
 	}
 }

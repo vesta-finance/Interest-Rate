@@ -27,7 +27,6 @@ abstract contract CropJoin is OwnableUpgradeable {
 	bytes32 public ilk; // collateral type
 	IERC20 public gem; // collateral token
 	uint256 public dec; // gem decimals
-	IERC20 public bonus; // rewards token
 
 	uint256 public share; // crops per gem    [ray]
 	uint256 public total; // total gems       [wad]
@@ -38,6 +37,7 @@ abstract contract CropJoin is OwnableUpgradeable {
 
 	uint256 internal to18ConversionFactor;
 	uint256 internal toGemConversionFactor;
+	uint256 public interestMinted;
 
 	uint256[49] private __gap;
 
@@ -50,9 +50,10 @@ abstract contract CropJoin is OwnableUpgradeable {
 	function __INIT_CROP(
 		address vat_,
 		bytes32 ilk_,
-		address gem_,
-		address bonus_
+		address gem_
 	) internal onlyInitializing {
+		__Ownable_init();
+
 		vat = IVatLike(vat_);
 		ilk = ilk_;
 		gem = IERC20(gem_);
@@ -61,8 +62,6 @@ abstract contract CropJoin is OwnableUpgradeable {
 		dec = dec_;
 		to18ConversionFactor = 10**(18 - dec_);
 		toGemConversionFactor = 10**dec_;
-
-		bonus = IERC20(bonus_);
 	}
 
 	// Net Asset Valuation [wad]
@@ -77,11 +76,11 @@ abstract contract CropJoin is OwnableUpgradeable {
 		else return Math.wdiv(netAssetValuation(), total);
 	}
 
-	function crop() internal virtual returns (uint256) {
-		return Math.sub(bonus.balanceOf(address(this)), stock);
+	function _crop() internal virtual returns (uint256) {
+		return Math.sub(interestMinted, stock);
 	}
 
-	function join(address urn, uint256 val) internal virtual {
+	function _join(address urn, uint256 val) internal virtual {
 		if (val > 0) {
 			uint256 wad = Math.wdiv(
 				Math.mul(val, to18ConversionFactor),
@@ -92,7 +91,7 @@ abstract contract CropJoin is OwnableUpgradeable {
 			// Also enforces a non-zero wad
 			require(int256(wad) > 0);
 
-			require(gem.transferFrom(msg.sender, address(this), val));
+			require(gem.transferFrom(urn, address(this), val));
 			vat.slip(ilk, urn, int256(wad));
 
 			total = Math.add(total, wad);
@@ -102,7 +101,7 @@ abstract contract CropJoin is OwnableUpgradeable {
 		emit Join(val);
 	}
 
-	function exit(address guy, uint256 val) internal virtual {
+	function _exit(address guy, uint256 val) internal virtual {
 		if (val > 0) {
 			uint256 wad = Math.wdivup(
 				Math.mul(val, to18ConversionFactor),
@@ -114,12 +113,12 @@ abstract contract CropJoin is OwnableUpgradeable {
 			require(int256(wad) > 0);
 
 			require(gem.transfer(guy, val));
-			vat.slip(ilk, msg.sender, -int256(wad));
+			vat.slip(ilk, guy, -int256(wad));
 
 			total = Math.sub(total, wad);
-			stake[msg.sender] = Math.sub(stake[msg.sender], wad);
+			stake[guy] = Math.sub(stake[guy], wad);
 		}
-		crops[msg.sender] = Math.rmulup(stake[msg.sender], share);
+		crops[guy] = Math.rmulup(stake[guy], share);
 		emit Exit(val);
 	}
 }

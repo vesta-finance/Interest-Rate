@@ -15,6 +15,12 @@ contract VestaEIR is CropJoinAdapter {
 	using PRBMathSD59x18 for int256;
 	using PRBMathUD60x18 for uint256;
 
+	error NotTroveManager();
+	error CannotBeZero();
+
+	event InterestMinted(uint256 _interest);
+	event InterestSentToSafetyVault(uint256 _interest);
+
 	uint256 public constant PRECISION = 1e18;
 	uint256 private YEAR_MINUTE = 1.901285e6;
 	uint256 private constant COMPOUND = 2.71828e18;
@@ -24,79 +30,113 @@ contract VestaEIR is CropJoinAdapter {
 	uint256 public totalDebt;
 	uint8 public currentRisk;
 
-	mapping(address => uint256) public balances;
-
 	IERC20 public vst;
 	IVSTOperator public vstOperator;
 	IPriceFeed public oracle;
 	address public safetyVault;
 	uint8 public risk;
 
+	address public troveManager;
+	mapping(address => uint256) private balances;
+
+	modifier onlyTroveManager() {
+		if (msg.sender != troveManager) revert NotTroveManager();
+
+		_;
+	}
+
 	function setUp(
 		address _vst,
 		address _vstOperator,
 		address _priceFeed,
 		address _safetyVault,
+		address _troveManager,
 		string memory _moduleName,
 		string memory _moduleSymbol,
 		uint8 _defaultRisk
 	) external initializer {
-		__INIT_ADAPTOR(_moduleName, _moduleSymbol, _vst);
+		__INIT_ADAPTOR(_moduleName, _moduleSymbol);
 
 		vst = IERC20(_vst);
 		vstOperator = IVSTOperator(_vstOperator);
 		oracle = IPriceFeed(_priceFeed);
-		risk = _defaultRisk;
 		safetyVault = _safetyVault;
+		troveManager = _troveManager;
+		risk = _defaultRisk;
+
 		lastUpdate = block.timestamp;
+		updateEIR();
 	}
 
-	function increaseDebt(uint256 _debt)
+	function increaseDebt(address _vault, uint256 _debt)
 		external
+		onlyTroveManager
 		returns (uint256 addedInterest_)
 	{
 		updateEIR();
 		uint256 newShare = PRECISION;
-		addedInterest_ = _distributeInterestRate(msg.sender);
+		addedInterest_ = _distributeInterestRate(_vault);
 
-		balances[msg.sender] += _debt;
+		balances[_vault] += _debt;
 
 		if (total > 0) {
 			newShare = (total * (_debt + addedInterest_)) / totalDebt;
 		}
 
-		mint(msg.sender, newShare);
+		_mint(_vault, newShare);
 		totalDebt += _debt;
 
 		return addedInterest_;
 	}
 
-	function decreaseDebt(uint256 _debt)
+	function decreaseDebt(address _vault, uint256 _debt)
 		external
+		onlyTroveManager
 		returns (uint256 addedInterest_)
 	{
+		if (_debt == 0) revert CannotBeZero();
+
 		updateEIR();
-		addedInterest_ = _distributeInterestRate(msg.sender);
+		addedInterest_ = _distributeInterestRate(_vault);
 
 		uint256 newShare = 0;
-		uint256 balanceTotal = balances[msg.sender];
+		uint256 balanceTotal = balances[_vault];
 
-		if (_debt > balanceTotal) _debt = balanceTotal;
-
-		balanceTotal = balances[msg.sender] -= _debt;
-
+		balanceTotal = balances[_vault] -= _debt;
 		if (total > 0 && balanceTotal > 0) {
 			newShare = (total * balanceTotal) / totalDebt;
 		}
-		burn(msg.sender, balanceOf(msg.sender));
-		mint(msg.sender, newShare);
+		_burn(_vault, balanceOf(_vault));
+		_mint(_vault, newShare);
 
 		totalDebt -= _debt;
 		return addedInterest_;
 	}
 
+	function exit(address _vault)
+		external
+		onlyTroveManager
+		returns (uint256 addedInterest_)
+	{
+		updateEIR();
+		addedInterest_ = _distributeInterestRate(_vault);
+
+		balances[_vault] = 0;
+
+		_burn(_vault, balanceOf(_vault));
+		return addedInterest_;
+	}
+
+	function forceUpdateEIR(uint256 _vstPrice) external onlyTroveManager {
+		_updateEIR(_vstPrice);
+	}
+
 	function updateEIR() public {
-		uint256 newEIR = getEIR(risk, oracle.fetchPrice(address(vst)));
+		_updateEIR(oracle.fetchPrice(address(vst)));
+	}
+
+	function _updateEIR(uint256 _vstPrice) internal {
+		uint256 newEIR = getEIR(risk, _vstPrice);
 		uint256 oldEIR = currentEIR;
 
 		uint256 lastDebt = totalDebt;
@@ -113,24 +153,29 @@ contract VestaEIR is CropJoinAdapter {
 			minuteDifference * YEAR_MINUTE
 		);
 
-		vstOperator.mint(address(this), totalDebt - lastDebt);
+		uint256 interest = totalDebt - lastDebt;
+
+		interestMinted += interest;
+
+		vstOperator.mint(address(safetyVault), interest);
+		emit InterestMinted(interest);
 	}
 
 	function _distributeInterestRate(address _user)
 		internal
 		returns (uint256 emittedFee_)
 	{
-		if (total > 0) share = Math.add(share, Math.rdiv(crop(), total));
+		if (total > 0) share = Math.add(share, Math.rdiv(_crop(), total));
 
 		uint256 last = crops[_user];
 		uint256 curr = Math.rmul(stake[_user], share);
 		if (curr > last) {
 			emittedFee_ = curr - last;
 			balances[_user] += emittedFee_;
-			vst.transfer(safetyVault, emittedFee_);
+			interestMinted -= emittedFee_;
 		}
-		stock = bonus.balanceOf(address(this));
 
+		stock = interestMinted;
 		return emittedFee_;
 	}
 
@@ -166,10 +211,7 @@ contract VestaEIR is CropJoinAdapter {
 		}
 
 		// duplicate harvest logic
-		uint256 crop = Math.sub(
-			vst.balanceOf(address(this)) + incomingMinting,
-			stock
-		);
+		uint256 crop = Math.sub(interestMinted + incomingMinting, stock);
 		uint256 share = Math.add(share, Math.rdiv(crop, total));
 
 		uint256 last = this.crops(user);
@@ -203,6 +245,10 @@ contract VestaEIR is CropJoinAdapter {
 
 		int256 exp = (-1.0397e4 * P);
 		return uint256(FullMath.mulDivRoundingUp(a, uint256(exp.exp()), 1e20)); // Scale to BPS
+	}
+
+	function getDebtOf(address _vault) external view returns (uint256) {
+		return balances[_vault];
 	}
 }
 
