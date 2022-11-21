@@ -6,16 +6,19 @@ import "./lib/FullMath.sol";
 import "./CropJoinAdapter.sol";
 import "./interface/IVSTOperator.sol";
 import "./interface/IERC20.sol";
-import "./interface/IPriceFeed.sol";
+import "./interface/IModuleInterest.sol";
+import "./interface/IInterestManager.sol";
 
 import "prb-math/PRBMathSD59x18.sol";
 import "prb-math/PRBMathUD60x18.sol";
 
-contract VestaEIR is CropJoinAdapter {
+import { console2 as console } from "forge-std/console2.sol";
+
+contract VestaEIR is CropJoinAdapter, IModuleInterest {
 	using PRBMathSD59x18 for int256;
 	using PRBMathUD60x18 for uint256;
 
-	error NotTroveManager();
+	error NotInterestManager();
 	error CannotBeZero();
 
 	event InterestMinted(uint256 _interest);
@@ -32,15 +35,16 @@ contract VestaEIR is CropJoinAdapter {
 
 	IERC20 public vst;
 	IVSTOperator public vstOperator;
-	IPriceFeed public oracle;
 	address public safetyVault;
 	uint8 public risk;
 
-	address public troveManager;
+	address public interestManager;
 	mapping(address => uint256) private balances;
 
-	modifier onlyTroveManager() {
-		if (msg.sender != troveManager) revert NotTroveManager();
+	modifier onlyInterestManager() {
+		if (msg.sender != interestManager) {
+			revert NotInterestManager();
+		}
 
 		_;
 	}
@@ -48,9 +52,8 @@ contract VestaEIR is CropJoinAdapter {
 	function setUp(
 		address _vst,
 		address _vstOperator,
-		address _priceFeed,
 		address _safetyVault,
-		address _troveManager,
+		address _interestManager,
 		string memory _moduleName,
 		string memory _moduleSymbol,
 		uint8 _defaultRisk
@@ -59,21 +62,20 @@ contract VestaEIR is CropJoinAdapter {
 
 		vst = IERC20(_vst);
 		vstOperator = IVSTOperator(_vstOperator);
-		oracle = IPriceFeed(_priceFeed);
 		safetyVault = _safetyVault;
-		troveManager = _troveManager;
+		interestManager = _interestManager;
 		risk = _defaultRisk;
 
 		lastUpdate = block.timestamp;
-		updateEIR();
+		_updateEIR(IInterestManager(_interestManager).getLastVstPrice());
 	}
 
 	function increaseDebt(address _vault, uint256 _debt)
 		external
-		onlyTroveManager
+		override
+		onlyInterestManager
 		returns (uint256 addedInterest_)
 	{
-		updateEIR();
 		uint256 newShare = PRECISION;
 		addedInterest_ = _distributeInterestRate(_vault);
 
@@ -91,12 +93,12 @@ contract VestaEIR is CropJoinAdapter {
 
 	function decreaseDebt(address _vault, uint256 _debt)
 		external
-		onlyTroveManager
+		override
+		onlyInterestManager
 		returns (uint256 addedInterest_)
 	{
 		if (_debt == 0) revert CannotBeZero();
 
-		updateEIR();
 		addedInterest_ = _distributeInterestRate(_vault);
 
 		uint256 newShare = 0;
@@ -115,10 +117,10 @@ contract VestaEIR is CropJoinAdapter {
 
 	function exit(address _vault)
 		external
-		onlyTroveManager
+		override
+		onlyInterestManager
 		returns (uint256 addedInterest_)
 	{
-		updateEIR();
 		addedInterest_ = _distributeInterestRate(_vault);
 
 		balances[_vault] = 0;
@@ -127,12 +129,12 @@ contract VestaEIR is CropJoinAdapter {
 		return addedInterest_;
 	}
 
-	function forceUpdateEIR(uint256 _vstPrice) external onlyTroveManager {
+	function updateEIR(uint256 _vstPrice)
+		external
+		override
+		onlyInterestManager
+	{
 		_updateEIR(_vstPrice);
-	}
-
-	function updateEIR() public {
-		_updateEIR(oracle.fetchPrice(address(vst)));
 	}
 
 	function _updateEIR(uint256 _vstPrice) internal {
@@ -193,8 +195,9 @@ contract VestaEIR is CropJoinAdapter {
 	}
 
 	function getNotEmittedInterestRate(address user)
-		public
+		external
 		view
+		override
 		returns (uint256)
 	{
 		if (total == 0) return 0;
@@ -247,7 +250,12 @@ contract VestaEIR is CropJoinAdapter {
 		return uint256(FullMath.mulDivRoundingUp(a, uint256(exp.exp()), 1e20)); // Scale to BPS
 	}
 
-	function getDebtOf(address _vault) external view returns (uint256) {
+	function getDebtOf(address _vault)
+		external
+		view
+		override
+		returns (uint256)
+	{
 		return balances[_vault];
 	}
 }

@@ -3,7 +3,7 @@ pragma solidity ^0.8.4;
 
 import "./base/BaseTest.t.sol";
 import { VestaEIR } from "../main/VestaEIR.sol";
-import { IPriceFeed } from "../main/interface/IPriceFeed.sol";
+import { IInterestManager } from "../main/interface/IInterestManager.sol";
 import { MockERC20 } from "./mock/MockERC20.sol";
 
 contract VestaEIRTest is BaseTest {
@@ -25,7 +25,7 @@ contract VestaEIRTest is BaseTest {
 	}
 
 	bytes private constant REVERT_NOT_TROVEMANAGER =
-		abi.encodeWithSignature("NotTroveManager()");
+		abi.encodeWithSignature("NotInterestManager()");
 	bytes private constant REVERT_CANNOT_BE_ZERO =
 		abi.encodeWithSignature("CannotBeZero()");
 
@@ -49,9 +49,8 @@ contract VestaEIRTest is BaseTest {
 	address private userB = generateAddress("userB", false);
 	address private userC = generateAddress("userC", false);
 	address private mockSafetyVault = generateAddress("Safety Vault", true);
-	address private mockPriceFeed = generateAddress("Price Feed", true);
-	address private mockTroveManager =
-		generateAddress("Trove Manager", true);
+	address private mockInterestManager =
+		generateAddress("Interest Manager", true);
 	address private mockVST;
 	address private mockVSTOperator;
 
@@ -63,15 +62,18 @@ contract VestaEIRTest is BaseTest {
 		mockVST = address(new MockERC20("VST", "VST", 18));
 		mockVSTOperator = address(new VSTOperatorMock(mockVST));
 
-		_mockVSTPrice(1e18);
+		vm.mockCall(
+			mockInterestManager,
+			abi.encodeWithSelector(IInterestManager.getLastVstPrice.selector),
+			abi.encode(1e18)
+		);
 
 		underTest = new VestaEIR();
 		underTest.setUp(
 			mockVST,
 			mockVSTOperator,
-			mockPriceFeed,
 			mockSafetyVault,
-			mockTroveManager,
+			mockInterestManager,
 			"Vesta EIR Test Module",
 			"vETM",
 			0
@@ -83,9 +85,8 @@ contract VestaEIRTest is BaseTest {
 		underTest.setUp(
 			mockVST,
 			mockVSTOperator,
-			mockPriceFeed,
 			mockSafetyVault,
-			mockTroveManager,
+			mockInterestManager,
 			"Vesta EIR Test Module",
 			"vETM",
 			0
@@ -102,9 +103,8 @@ contract VestaEIRTest is BaseTest {
 		underTest.setUp(
 			mockVST,
 			mockVSTOperator,
-			mockPriceFeed,
 			mockSafetyVault,
-			mockTroveManager,
+			mockInterestManager,
 			"Vesta EIR Test Module",
 			"vETM",
 			1
@@ -112,9 +112,8 @@ contract VestaEIRTest is BaseTest {
 
 		assertEq(address(underTest.vst()), mockVST);
 		assertEq(address(underTest.vstOperator()), mockVSTOperator);
-		assertEq(address(underTest.oracle()), mockPriceFeed);
 		assertEq(underTest.safetyVault(), mockSafetyVault);
-		assertEq(underTest.troveManager(), mockTroveManager);
+		assertEq(underTest.interestManager(), mockInterestManager);
 		assertEq(underTest.lastUpdate(), block.timestamp);
 		assertEq(underTest.risk(), 1);
 		assertEq(underTest.currentEIR(), 75);
@@ -128,9 +127,8 @@ contract VestaEIRTest is BaseTest {
 		underTest.setUp(
 			mockVST,
 			mockVSTOperator,
-			mockPriceFeed,
 			mockSafetyVault,
-			mockTroveManager,
+			mockInterestManager,
 			"Vesta EIR Test Module",
 			"vETM",
 			1
@@ -164,9 +162,9 @@ contract VestaEIRTest is BaseTest {
 
 	function test_increaseDebt_asTroveManager_thenCallUpdateEIR()
 		external
-		prankAs(mockTroveManager)
+		prankAs(mockInterestManager)
 	{
-		_mockVSTPrice(0.95e18);
+		_skipAndUpdateInterest(0, 0.95e18);
 		underTest.increaseDebt(userA, 1e18);
 
 		assertEq(underTest.currentEIR(), 9051);
@@ -174,7 +172,7 @@ contract VestaEIRTest is BaseTest {
 
 	function test_increaseDebt_asTroveManager_givenUserA_whenSystemEmpty_thenUpdateSystem()
 		external
-		prankAs(mockTroveManager)
+		prankAs(mockInterestManager)
 	{
 		uint256 debt = 992.18e18;
 		uint256 expectedShare = 1e18;
@@ -189,7 +187,7 @@ contract VestaEIRTest is BaseTest {
 
 	function test_increaseDebt_asTroveManager_givenUserB_whenSystemIsNotEmpty_thenGivesCorrectShare()
 		external
-		prankAs(mockTroveManager)
+		prankAs(mockInterestManager)
 	{
 		uint256 debtUserA = 9823.1e18;
 		uint256 debtUserB = 772e18;
@@ -206,12 +204,12 @@ contract VestaEIRTest is BaseTest {
 
 	function test_increaseDebt_asTroveManager_givenUserA_whenNotFirstTimeTimeAndTimePassed_thenApplyInterestRate()
 		external
-		prankAs(mockTroveManager)
+		prankAs(mockInterestManager)
 	{
 		uint256 debt = 764.23e18;
 		underTest.increaseDebt(userA, debt);
 
-		skip(1 hours);
+		_skipAndUpdateInterest(1 hours, 1e18);
 
 		uint256 interestRateAdded = underTest.increaseDebt(userA, 1e18);
 
@@ -225,7 +223,7 @@ contract VestaEIRTest is BaseTest {
 
 	function test_decreaseDebt_asTroveManager_givenZeroDebt_thenReverts()
 		external
-		prankAs(mockTroveManager)
+		prankAs(mockInterestManager)
 	{
 		vm.expectRevert(REVERT_CANNOT_BE_ZERO);
 		underTest.decreaseDebt(userA, 0);
@@ -233,7 +231,7 @@ contract VestaEIRTest is BaseTest {
 
 	function test_decreaseDebt_asTroveManager_givenUserWithNoDebt_thenReverts()
 		external
-		prankAs(mockTroveManager)
+		prankAs(mockInterestManager)
 	{
 		vm.expectRevert(stdError.arithmeticError);
 		underTest.decreaseDebt(userA, 1e18);
@@ -241,7 +239,7 @@ contract VestaEIRTest is BaseTest {
 
 	function test_decreaseDebt_asTroveManager_givenUserAWithDebt_thenDistributeAndUpdateShare()
 		external
-		prankAs(mockTroveManager)
+		prankAs(mockInterestManager)
 	{
 		uint256 debtA = 764.23e18;
 		uint256 withdrawalA = 100.23e18;
@@ -249,9 +247,8 @@ contract VestaEIRTest is BaseTest {
 		underTest.increaseDebt(userA, debtA);
 		underTest.increaseDebt(userB, debtB);
 
-		skip(1 hours);
+		_skipAndUpdateInterest(1 hours, 1e18);
 
-		underTest.updateEIR();
 		uint256 pendingEIRUserA = underTest.getNotEmittedInterestRate(userA);
 		uint256 totalDebt = underTest.totalDebt();
 		uint256 total = underTest.total();
@@ -272,25 +269,23 @@ contract VestaEIRTest is BaseTest {
 
 	function test_exit_asTroveManager_givenNonExistantUser_thenReverts()
 		external
-		prankAs(mockTroveManager)
+		prankAs(mockInterestManager)
 	{
 		underTest.exit(userA);
 	}
 
 	function test_getUserInterest_givenSpecificNumber_thenEqualsNumbers()
 		external
-		prankAs(mockTroveManager)
+		prankAs(mockInterestManager)
 	{
 		uint256 timePassedRaw = 30240;
 		uint256 debtOne = 308.279e18;
 		uint256 debtTwo = 26877.3e18;
 
-		_mockVSTPrice(1e18);
-
 		underTest.increaseDebt(userA, debtOne);
 		underTest.increaseDebt(userB, debtTwo);
 
-		skip(timePassedRaw * 1 minutes);
+		_skipAndUpdateInterest(timePassedRaw * 1 minutes, 1e18);
 
 		assertEq(
 			underTest.getNotEmittedInterestRate(userA),
@@ -304,17 +299,16 @@ contract VestaEIRTest is BaseTest {
 
 	function test_getUserInterest_thenReturnsAccurateAmount()
 		external
-		prankAs(mockTroveManager)
+		prankAs(mockInterestManager)
 	{
 		uint256 timePassedRaw = 52858980;
 		uint256 yearlyTime = _minuteToYear(timePassedRaw);
 		uint256 debt = 100e18;
 		uint256 rate = 400;
 
-		_mockVSTPrice(0.98e18);
+		_skipAndUpdateInterest(0, 0.98e18);
 		underTest.increaseDebt(userA, debt);
-
-		skip(timePassedRaw * 1 minutes);
+		_skipAndUpdateInterest(timePassedRaw * 1 minutes, 0.98e18);
 
 		assertEq(
 			underTest.getNotEmittedInterestRate(userA),
@@ -324,17 +318,17 @@ contract VestaEIRTest is BaseTest {
 
 	function test_getUserInterest_decimals_thenReturnsAccurateAmount()
 		external
-		prankAs(mockTroveManager)
+		prankAs(mockInterestManager)
 	{
 		uint256 timePassedRaw = 52858980;
 		uint256 yearlyTime = _minuteToYear(timePassedRaw);
 		uint256 debt = 100.23e18;
 		uint256 rate = 400;
 
-		_mockVSTPrice(0.98e18);
+		_skipAndUpdateInterest(0, 0.98e18);
 		underTest.increaseDebt(userA, debt);
 
-		skip(timePassedRaw * 1 minutes);
+		_skipAndUpdateInterest(timePassedRaw * 1 minutes, 0.98e18);
 
 		assertEq(
 			underTest.getNotEmittedInterestRate(userA),
@@ -342,7 +336,7 @@ contract VestaEIRTest is BaseTest {
 		);
 	}
 
-	function test_EIR_singleTime() external prankAs(mockTroveManager) {
+	function test_EIR_singleTime() external prankAs(mockInterestManager) {
 		uint256 rawMinuteA = 788940;
 		uint256 rawMinuteB = 262980;
 		uint256 rawMinuteC = 522111;
@@ -358,19 +352,20 @@ contract VestaEIRTest is BaseTest {
 		uint256 userB_debt = 302.99e18;
 		uint256 userC_debt = 3212.19e18;
 		uint256 rate = 400;
-		_mockVSTPrice(0.98e18);
+
+		_skipAndUpdateInterest(0, 0.98e18);
 
 		underTest.increaseDebt(userA, userA_debt);
 
-		skip(rawMinuteA * 1 minutes);
+		_skipAndUpdateInterest(rawMinuteA * 1 minutes, 0.98e18);
 
 		underTest.increaseDebt(userB, userB_debt);
 
-		skip(rawMinuteB * 1 minutes);
+		_skipAndUpdateInterest(rawMinuteB * 1 minutes, 0.98e18);
 
 		underTest.increaseDebt(userC, userC_debt);
 
-		skip(rawMinuteC * 1 minutes);
+		_skipAndUpdateInterest(rawMinuteC * 1 minutes, 0.98e18);
 
 		assertEqTolerance(
 			underTest.getNotEmittedInterestRate(userA),
@@ -394,7 +389,10 @@ contract VestaEIRTest is BaseTest {
 		);
 	}
 
-	function test_json_simulation_01() external prankAs(mockTroveManager) {
+	function test_json_simulation_01()
+		external
+		prankAs(mockInterestManager)
+	{
 		JsonSimulation memory simulation = _loadSimulation(
 			"/src/test/data/simulation_01.json"
 		);
@@ -406,8 +404,10 @@ contract VestaEIRTest is BaseTest {
 		for (uint256 i = 0; i < length; ++i) {
 			sequence = simulation.sequences[i];
 
-			skip(sequence.minutePassed * 1 minutes);
-			_mockVSTPrice(sequence.vstPrice);
+			_skipAndUpdateInterest(
+				sequence.minutePassed * 1 minutes,
+				sequence.vstPrice
+			);
 
 			uint256 callersLength = sequence.callers.length;
 			for (uint256 x = 0; x < callersLength; ++x) {
@@ -445,21 +445,11 @@ contract VestaEIRTest is BaseTest {
 		}
 	}
 
-	function _mockVSTPrice(uint256 _price) internal {
-		vm.mockCall(
-			mockPriceFeed,
-			abi.encodeWithSelector(IPriceFeed.fetchPrice.selector, mockVST),
-			abi.encode(_price)
-		);
-
-		vm.mockCall(
-			mockPriceFeed,
-			abi.encodeWithSelector(
-				IPriceFeed.getExternalPrice.selector,
-				mockVST
-			),
-			abi.encode(_price)
-		);
+	function _skipAndUpdateInterest(uint256 _time, uint256 _vstPrice)
+		internal
+	{
+		skip(_time);
+		underTest.updateEIR(_vstPrice);
 	}
 
 	function _loadSimulation(string memory _jsonPath)
