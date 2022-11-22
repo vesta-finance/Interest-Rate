@@ -4,6 +4,7 @@ export interface IDeployConfig {
 }
 
 export interface ContractConfig {
+	admin: string;
 	vst: string;
 	borrowerOperator: string;
 	troveManager: string;

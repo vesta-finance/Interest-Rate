@@ -42,6 +42,25 @@ export class Deployer {
 				contractsConfig.troveManager,
 				contractsConfig.priceFeed
 			);
+
+		await this.deployModule(contractsConfig);
+
+		await this.transferOwnership(this.safetyVault, contractsConfig.admin);
+		await this.transferOwnership(
+			this.interestManager,
+			contractsConfig.admin
+		);
+
+		if (
+			(await this.hre.upgrades.admin.getInstance()).address !=
+			contractsConfig.admin
+		) {
+			await this.helper.sendAndWaitForTransaction(
+				this.hre.upgrades.admin.transferProxyAdminOwnership(
+					contractsConfig.admin
+				)
+			);
+		}
 	}
 
 	async deployModule(contractConfig: ContractConfig) {
@@ -72,6 +91,16 @@ export class Deployer {
 					module.linkedToken,
 					contract.address
 				)
+			);
+
+			await this.transferOwnership(contract, contractConfig.admin);
+		}
+	}
+
+	async transferOwnership(contract: Contract, admin: string) {
+		if ((await contract.owner()) != contract.admin && admin != undefined) {
+			await this.helper.sendAndWaitForTransaction(
+				contract.transferOwnership(admin)
 			);
 		}
 	}

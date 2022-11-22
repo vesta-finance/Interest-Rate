@@ -9,6 +9,8 @@ import { IVSTOperator } from "../main/interface/IVSTOperator.sol";
 import { IPriceFeed } from "../main/interface/IPriceFeed.sol";
 
 contract VestaInterestManagerTest is BaseTest {
+	event ModuleLinked(address indexed token, address indexed module);
+
 	event InterestMinted(address indexed module, uint256 interestMinted);
 	event DebtChanged(
 		address indexed module,
@@ -97,7 +99,7 @@ contract VestaInterestManagerTest is BaseTest {
 		underTest.setModuleFor(mockTokenA, mockModuleA);
 	}
 
-	function test_setModuleFor_asOwner_thenLinkTokenModule()
+	function test_setModuleFor_asOwner_thenLinkTokenModuleAndEmitModuleLinkedEvent()
 		external
 		prankAs(owner)
 	{
@@ -107,6 +109,10 @@ contract VestaInterestManagerTest is BaseTest {
 		uint256 currentLength = underTest.getModules().length;
 
 		_mockUpdateEIRCall(module, DEFAULT_VST_PRICE, 0);
+
+		vm.expectEmit(true, true, true, true);
+		emit ModuleLinked(token, module);
+
 		underTest.setModuleFor(token, module);
 
 		uint256 newLength = underTest.getModules().length;

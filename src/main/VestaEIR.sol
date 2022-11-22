@@ -65,7 +65,6 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 
 	function setRisk(uint8 _newRisk) external onlyOwner {
 		risk = _newRisk;
-
 		emit RiskChanged(_newRisk);
 	}
 

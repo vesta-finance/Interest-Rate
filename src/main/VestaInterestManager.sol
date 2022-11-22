@@ -51,6 +51,8 @@ contract VestaInterestManager is IInterestManager, OwnableUpgradeable {
 		interestModules.push(_module);
 
 		IModuleInterest(_module).updateEIR(vstPrice);
+
+		emit ModuleLinked(_token, _module);
 	}
 
 	function increaseDebt(

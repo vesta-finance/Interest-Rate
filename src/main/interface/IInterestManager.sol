@@ -2,6 +2,7 @@
 pragma solidity >=0.8.0;
 
 interface IInterestManager {
+	event ModuleLinked(address indexed token, address indexed module);
 	event DebtChanged(
 		address indexed token,
 		address indexed user,
