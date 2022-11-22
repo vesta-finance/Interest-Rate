@@ -185,11 +185,16 @@ contract VestaEIRTest is BaseTest {
 		external
 		prankAs(owner)
 	{
+		uint256 oldCurrentEIR = underTest.currentEIR();
+		uint256 expectingEIR = underTest.getEIR(2, 1e18);
+
 		vm.expectEmit(true, true, true, true);
 		emit RiskChanged(2);
 		underTest.setRisk(2);
 
 		assertEq(underTest.risk(), 2);
+		assertEq(underTest.currentEIR(), expectingEIR);
+		assertTrue(underTest.currentEIR() != oldCurrentEIR);
 	}
 
 	function test_setSafetyVault_asUser_thenReverts()
@@ -350,6 +355,7 @@ contract VestaEIRTest is BaseTest {
 		external
 		prankAs(mockInterestManager)
 	{
+		uint256 expectedInterestAdded = 659373279427298707;
 		uint256 debtA = 764.23e18;
 		underTest.increaseDebt(userA, debtA);
 
@@ -357,7 +363,7 @@ contract VestaEIRTest is BaseTest {
 
 		uint256 addedInterestRate = underTest.exit(userA);
 
-		assertEq(addedInterestRate, 659373279427298707);
+		assertEq(addedInterestRate, expectedInterestAdded);
 		assertEq(underTest.getDebtOf(userA), 0);
 		assertEq(underTest.stake(userA), 0);
 	}
