@@ -10,7 +10,10 @@ import { MockERC20 } from "./mock/MockERC20.sol";
 contract VestaEIRTest is BaseTest {
 	using stdJson for string;
 
-	event InterestMinted(uint256 mintedInterest);
+	event InterestMinted(uint256 interest);
+	event DebtChanged(address user, uint256 debt);
+	event SystemDebtChanged(uint256 debt);
+	event RiskChanged(uint8 risk);
 
 	struct JsonSimulation {
 		uint256[] users;
@@ -74,6 +77,8 @@ contract VestaEIRTest is BaseTest {
 		);
 
 		underTest = new VestaEIR();
+
+		vm.prank(owner);
 		underTest.setUp(
 			mockVST,
 			mockVSTOperator,
@@ -129,6 +134,7 @@ contract VestaEIRTest is BaseTest {
 		prankAs(owner)
 	{
 		underTest = new VestaEIR();
+
 		underTest.setUp(
 			mockVST,
 			mockVSTOperator,
@@ -170,6 +176,38 @@ contract VestaEIRTest is BaseTest {
 		assertTrue(address(underTest.gem()) != address(0));
 	}
 
+	function test_setRisk_asUser_thenReverts() external prankAs(userA) {
+		vm.expectRevert(NOT_OWNER);
+		underTest.setRisk(0);
+	}
+
+	function test_setRisk_asOwner_thenUpdateSystemAndEmitsRiskChanged()
+		external
+		prankAs(owner)
+	{
+		vm.expectEmit(true, true, true, true);
+		emit RiskChanged(2);
+		underTest.setRisk(2);
+
+		assertEq(underTest.risk(), 2);
+	}
+
+	function test_setSafetyVault_asUser_thenReverts()
+		external
+		prankAs(userA)
+	{
+		vm.expectRevert(NOT_OWNER);
+		underTest.setSafetyVault(address(this));
+	}
+
+	function test_setSafetyVault_asOwner_thenUpdatesSystem()
+		external
+		prankAs(owner)
+	{
+		underTest.setSafetyVault(address(this));
+		assertEq(underTest.safetyVault(), address(this));
+	}
+
 	function test_increaseDebt_asUser_thenReverts() external prankAs(userA) {
 		vm.expectRevert(REVERT_NOT_INTERET_MANAGER);
 		underTest.increaseDebt(userA, 1e18);
@@ -185,12 +223,19 @@ contract VestaEIRTest is BaseTest {
 		assertEq(underTest.currentEIR(), 9051);
 	}
 
-	function test_increaseDebt_asInterestManager_givenUserA_whenSystemEmpty_thenUpdateSystem()
+	function test_increaseDebt_asInterestManager_givenUserA_whenSystemEmpty_thenUpdateSystemAndEmitUserAndSystemDebtChanged()
 		external
 		prankAs(mockInterestManager)
 	{
 		uint256 debt = 992.18e18;
 		uint256 expectedShare = 1e18;
+
+		vm.expectEmit(true, true, true, true);
+		emit DebtChanged(userA, debt);
+
+		vm.expectEmit(true, true, true, true);
+		emit SystemDebtChanged(debt);
+
 		uint256 emittedInterest = underTest.increaseDebt(userA, debt);
 
 		assertEq(underTest.stake(userA), expectedShare);
@@ -252,13 +297,16 @@ contract VestaEIRTest is BaseTest {
 		underTest.decreaseDebt(userA, 1e18);
 	}
 
-	function test_decreaseDebt_asInterestManager_givenUserAWithDebt_thenDistributeAndUpdateShare()
+	function test_decreaseDebt_asInterestManager_givenUserAWithDebt_thenDistributeAndUpdateShareAndEmitsUserAndSystemDebtsChanged()
 		external
 		prankAs(mockInterestManager)
 	{
 		uint256 debtA = 764.23e18;
 		uint256 withdrawalA = 100.23e18;
 		uint256 debtB = 76.23e18;
+		uint256 expectedInterest = 435905541768641;
+		uint256 totalExpectedInterest = 479386011586659;
+
 		underTest.increaseDebt(userA, debtA);
 		underTest.increaseDebt(userB, debtB);
 
@@ -268,13 +316,21 @@ contract VestaEIRTest is BaseTest {
 		uint256 totalDebt = underTest.totalDebt();
 		uint256 total = underTest.total();
 
+		vm.expectEmit(true, true, true, true);
+		emit DebtChanged(userA, (debtA + expectedInterest) - withdrawalA);
+
+		vm.expectEmit(true, true, true, true);
+		emit SystemDebtChanged(
+			(debtA + debtB + totalExpectedInterest) - withdrawalA
+		);
+
 		uint256 interestRateAdded = underTest.decreaseDebt(userA, withdrawalA);
 
 		assertEq(
 			underTest.stake(userA),
 			(total * ((debtA + pendingEIRUserA) - withdrawalA)) / totalDebt
 		);
-		assertTrue(interestRateAdded != 0);
+		assertEq(interestRateAdded, expectedInterest);
 	}
 
 	function test_exit_asUser_thenReverts() external prankAs(userA) {

@@ -1,15 +1,20 @@
-import { SupportedChain } from "./NetworkConfig"
-
 export interface IDeployConfig {
-	TX_CONFIRMATIONS: number
-	ContractConfigExample?: CrossChainConfigExample
-}
-
-export type CrossChainConfigExample = {
-	[key in SupportedChain | string]?: ContractConfig
+	TX_CONFIRMATIONS: number;
+	configs?: ContractConfig;
 }
 
 export interface ContractConfig {
-	fakeConfig: string
-	fakeConfig1: number
+	vst: string;
+	borrowerOperator: string;
+	troveManager: string;
+	priceFeed: string;
+	modules?: ModuleConfig[];
 }
+
+export interface ModuleConfig {
+	linkedToken: string;
+	name: string;
+	symbole: string;
+	risk: number;
+}
+

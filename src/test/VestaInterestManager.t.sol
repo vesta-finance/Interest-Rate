@@ -9,6 +9,13 @@ import { IVSTOperator } from "../main/interface/IVSTOperator.sol";
 import { IPriceFeed } from "../main/interface/IPriceFeed.sol";
 
 contract VestaInterestManagerTest is BaseTest {
+	event InterestMinted(address indexed module, uint256 interestMinted);
+	event DebtChanged(
+		address indexed module,
+		address indexed user,
+		uint256 newDebt
+	);
+
 	bytes private constant REVERT_ORACLE_FAILED =
 		"Oracle Failed to fetch VST price.";
 
@@ -50,6 +57,8 @@ contract VestaInterestManagerTest is BaseTest {
 		vm.stopPrank();
 
 		vm.clearMockedCalls();
+		_mockGetDebtOf(mockModuleA, user, 0);
+		_mockGetDebtOf(mockModuleB, user, 0);
 		_mockVSTPrice(DEFAULT_VST_PRICE);
 	}
 
@@ -97,6 +106,7 @@ contract VestaInterestManagerTest is BaseTest {
 
 		uint256 currentLength = underTest.getModules().length;
 
+		_mockUpdateEIRCall(module, DEFAULT_VST_PRICE, 0);
 		underTest.setModuleFor(token, module);
 
 		uint256 newLength = underTest.getModules().length;
@@ -113,6 +123,7 @@ contract VestaInterestManagerTest is BaseTest {
 		address token = generateAddress("Function Token", true);
 		address module = generateAddress("Function Module", true);
 
+		_mockUpdateEIRCall(module, DEFAULT_VST_PRICE, 0);
 		underTest.setModuleFor(token, module);
 
 		vm.expectRevert(REVERT_MODULE_ALREADY_SET);
@@ -185,6 +196,30 @@ contract VestaInterestManagerTest is BaseTest {
 		assertEq(underTest.increaseDebt(mockTokenB, user, debt), 11e18);
 	}
 
+	function test_increaseDebt_asTroveManager_thenEmitsDebtChanged()
+		external
+		prankAs(mockTroveManager)
+	{
+		_mockGetDebtOf(mockModuleA, user, 300e18);
+		_expectUpdateEIRCall(mockModuleA, DEFAULT_VST_PRICE);
+		_expectUpdateEIRCall(mockModuleB, DEFAULT_VST_PRICE);
+
+		vm.mockCall(
+			mockModuleA,
+			abi.encodeWithSelector(
+				IModuleInterest.increaseDebt.selector,
+				user,
+				300e18
+			),
+			abi.encode(0)
+		);
+
+		vm.expectEmit(true, true, true, true);
+		emit DebtChanged(mockTokenA, user, 300e18);
+
+		underTest.increaseDebt(mockTokenA, user, 300e18);
+	}
+
 	function test_decreaseDebt_asNotTroveManager_thenReverts() external {
 		vm.expectRevert(REVERT_NOT_TROVE_MANAGER);
 		underTest.decreaseDebt(mockTokenA, user, 1e18);
@@ -251,6 +286,52 @@ contract VestaInterestManagerTest is BaseTest {
 		);
 
 		assertEq(underTest.decreaseDebt(mockTokenB, user, debt), 13e18);
+	}
+
+	function test_decreaseDebt_asTroveManager_thenEmitsDebtChanged()
+		external
+		prankAs(mockTroveManager)
+	{
+		_mockGetDebtOf(mockModuleA, user, 300e18);
+		_expectUpdateEIRCall(mockModuleA, DEFAULT_VST_PRICE);
+		_expectUpdateEIRCall(mockModuleB, DEFAULT_VST_PRICE);
+
+		vm.mockCall(
+			mockModuleA,
+			abi.encodeWithSelector(
+				IModuleInterest.decreaseDebt.selector,
+				user,
+				300e18
+			),
+			abi.encode(0)
+		);
+
+		vm.expectEmit(true, true, true, true);
+		emit DebtChanged(mockTokenA, user, 300e18);
+
+		underTest.decreaseDebt(mockTokenA, user, 300e18);
+	}
+
+	function test_updateModules_givenTimePassed_thenUpdatesAndEmitsInterestMintedEvent()
+		external
+		prankAs(mockTroveManager)
+	{
+		uint256 price = 1.99e18;
+
+		uint256 expectedInterestA = 992.1e18;
+		uint256 expectedInterestB = 232.1e18;
+
+		_mockVSTPrice(price);
+		_mockUpdateEIRCall(mockModuleA, price, expectedInterestA);
+		_mockUpdateEIRCall(mockModuleB, price, expectedInterestB);
+
+		vm.expectEmit(true, true, true, true);
+		emit InterestMinted(mockModuleA, expectedInterestA);
+
+		vm.expectEmit(true, true, true, true);
+		emit InterestMinted(mockModuleB, expectedInterestB);
+
+		underTest.updateModules();
 	}
 
 	function test_getUserDebt_givenTokenA_thenReturnsSameValues() external {
@@ -339,6 +420,8 @@ contract VestaInterestManagerTest is BaseTest {
 	function _expectUpdateEIRCall(address module, uint256 _vstPrice)
 		internal
 	{
+		_mockUpdateEIRCall(module, _vstPrice, 0);
+
 		vm.expectCall(
 			module,
 			abi.encodeWithSelector(IModuleInterest.updateEIR.selector, _vstPrice)
@@ -357,6 +440,18 @@ contract VestaInterestManagerTest is BaseTest {
 				_vstPrice
 			),
 			abi.encode(_response)
+		);
+	}
+
+	function _mockGetDebtOf(
+		address _module,
+		address _user,
+		uint256 _answer
+	) internal {
+		vm.mockCall(
+			_module,
+			abi.encodeWithSelector(IModuleInterest.getDebtOf.selector, _user),
+			abi.encode(_answer)
 		);
 	}
 }

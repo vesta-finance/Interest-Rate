@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 pragma solidity >=0.8.0;
 
 interface IModuleInterest {
@@ -5,7 +6,10 @@ interface IModuleInterest {
 	error CannotBeZero();
 	error NoDebtFound();
 
-	event InterestMinted(uint256 _interest);
+	event InterestMinted(uint256 interest);
+	event DebtChanged(address user, uint256 debt);
+	event SystemDebtChanged(uint256 debt);
+	event RiskChanged(uint8 risk);
 
 	function increaseDebt(address _vault, uint256 _debt)
 		external
@@ -17,7 +21,9 @@ interface IModuleInterest {
 
 	function exit(address _vault) external returns (uint256 addedInterest_);
 
-	function updateEIR(uint256 _vstPrice) external;
+	function updateEIR(uint256 _vstPrice)
+		external
+		returns (uint256 mintedInterest_);
 
 	function getNotEmittedInterestRate(address user)
 		external

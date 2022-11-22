@@ -58,13 +58,17 @@ contract VestaInterestManager is IInterestManager, OwnableUpgradeable {
 		address _user,
 		uint256 _debt
 	) external override onlyTroveManager returns (uint256 interestDebt_) {
-		_updateModules();
+		updateModules();
 
-		return
-			IModuleInterest(getInterestModule(_token)).increaseDebt(
-				_user,
-				_debt
-			);
+		IModuleInterest module = IModuleInterest(
+			IModuleInterest(getInterestModule(_token))
+		);
+
+		interestDebt_ = module.increaseDebt(_user, _debt);
+
+		emit DebtChanged(_token, _user, module.getDebtOf(_user));
+
+		return interestDebt_;
 	}
 
 	function decreaseDebt(
@@ -72,21 +76,32 @@ contract VestaInterestManager is IInterestManager, OwnableUpgradeable {
 		address _user,
 		uint256 _debt
 	) external override onlyTroveManager returns (uint256 interestDebt_) {
-		_updateModules();
+		updateModules();
 
-		return
-			IModuleInterest(getInterestModule(_token)).decreaseDebt(
-				_user,
-				_debt
-			);
+		IModuleInterest module = IModuleInterest(
+			IModuleInterest(getInterestModule(_token))
+		);
+
+		interestDebt_ = module.decreaseDebt(_user, _debt);
+
+		emit DebtChanged(_token, _user, module.getDebtOf(_user));
+
+		return interestDebt_;
 	}
 
-	function _updateModules() internal {
+	function updateModules() public {
 		vstPrice = oracle.fetchPrice(vst);
 		uint256 totalModules = interestModules.length;
 
+		uint256 interestAdded;
+		IModuleInterest module;
 		for (uint256 i = 0; i < totalModules; ++i) {
-			IModuleInterest(interestModules[i]).updateEIR(vstPrice);
+			module = IModuleInterest(interestModules[i]);
+			interestAdded = module.updateEIR(vstPrice);
+
+			if (interestAdded > 0) {
+				emit InterestMinted(address(module), interestAdded);
+			}
 		}
 	}
 

@@ -63,6 +63,16 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 		_updateEIR(IInterestManager(_interestManager).getLastVstPrice());
 	}
 
+	function setRisk(uint8 _newRisk) external onlyOwner {
+		risk = _newRisk;
+
+		emit RiskChanged(_newRisk);
+	}
+
+	function setSafetyVault(address _newSafetyVault) external onlyOwner {
+		safetyVault = _newSafetyVault;
+	}
+
 	function increaseDebt(address _vault, uint256 _debt)
 		external
 		override
@@ -72,7 +82,7 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 		uint256 newShare = PRECISION;
 		addedInterest_ = _distributeInterestRate(_vault);
 
-		balances[_vault] += _debt;
+		uint256 totalBalance = balances[_vault] += _debt;
 
 		if (total > 0) {
 			newShare = (total * (_debt + addedInterest_)) / totalDebt;
@@ -80,6 +90,9 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 
 		_mint(_vault, newShare);
 		totalDebt += _debt;
+
+		emit DebtChanged(_vault, totalBalance);
+		emit SystemDebtChanged(totalDebt);
 
 		return addedInterest_;
 	}
@@ -105,6 +118,10 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 		_mint(_vault, newShare);
 
 		totalDebt -= _debt;
+
+		emit DebtChanged(_vault, balanceTotal);
+		emit SystemDebtChanged(totalDebt);
+
 		return addedInterest_;
 	}
 
@@ -129,11 +146,15 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 		external
 		override
 		onlyInterestManager
+		returns (uint256 mintedInterest_)
 	{
-		_updateEIR(_vstPrice);
+		return _updateEIR(_vstPrice);
 	}
 
-	function _updateEIR(uint256 _vstPrice) internal {
+	function _updateEIR(uint256 _vstPrice)
+		internal
+		returns (uint256 mintedInterest_)
+	{
 		uint256 newEIR = getEIR(risk, _vstPrice);
 		uint256 oldEIR = currentEIR;
 
@@ -141,7 +162,7 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 		uint256 minuteDifference = (block.timestamp - lastUpdate) / 1 minutes;
 		currentEIR = newEIR;
 
-		if (minuteDifference == 0) return;
+		if (minuteDifference == 0) return 0;
 
 		lastUpdate = block.timestamp;
 
@@ -157,6 +178,8 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 
 		vstOperator.mint(address(safetyVault), interest);
 		emit InterestMinted(interest);
+
+		return interest;
 	}
 
 	function _distributeInterestRate(address _user)

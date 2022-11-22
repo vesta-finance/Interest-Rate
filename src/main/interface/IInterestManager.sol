@@ -1,6 +1,14 @@
+// SPDX-License-Identifier: MIT
 pragma solidity >=0.8.0;
 
 interface IInterestManager {
+	event DebtChanged(
+		address indexed token,
+		address indexed user,
+		uint256 newDebt
+	);
+	event InterestMinted(address indexed module, uint256 interestMinted);
+
 	error NotTroveManager();
 	error ErrorModuleAlreadySet();
 

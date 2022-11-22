@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 pragma solidity >=0.8.0;
 
 interface IVatLike {
@@ -11,3 +12,4 @@ interface IVatLike {
 		int256
 	) external;
 }
+
