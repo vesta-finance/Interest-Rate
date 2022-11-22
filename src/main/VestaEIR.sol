@@ -163,6 +163,8 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 		uint256 minuteDifference = (block.timestamp - lastUpdate) / 1 minutes;
 		currentEIR = newEIR;
 
+		emit EIRChanged(newEIR);
+
 		if (minuteDifference == 0) return 0;
 
 		lastUpdate = block.timestamp;

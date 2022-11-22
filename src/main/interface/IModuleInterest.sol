@@ -10,6 +10,7 @@ interface IModuleInterest {
 	event DebtChanged(address user, uint256 debt);
 	event SystemDebtChanged(uint256 debt);
 	event RiskChanged(uint8 risk);
+	event EIRChanged(uint256 newEIR);
 
 	function increaseDebt(address _vault, uint256 _debt)
 		external

@@ -14,6 +14,7 @@ contract VestaEIRTest is BaseTest {
 	event DebtChanged(address user, uint256 debt);
 	event SystemDebtChanged(uint256 debt);
 	event RiskChanged(uint8 risk);
+	event EIRChanged(uint256 newEIR);
 
 	struct JsonSimulation {
 		uint256[] users;
@@ -373,7 +374,7 @@ contract VestaEIRTest is BaseTest {
 		underTest.updateEIR(0);
 	}
 
-	function test_updateEIR_asInterestManager_whenNotMinutePassed_thenUpdateEIR()
+	function test_updateEIR_asInterestManager_whenNotMinutePassed_thenUpdateEIRAndEmitEIRChanged()
 		external
 		prankAs(mockInterestManager)
 	{
@@ -383,6 +384,10 @@ contract VestaEIRTest is BaseTest {
 		uint256 lastUpdate = underTest.lastUpdate();
 
 		skip(59 seconds);
+
+		vm.expectEmit(true, true, true, true);
+		emit EIRChanged(expectedEIR);
+
 		underTest.updateEIR(price);
 
 		assertTrue(oldEIR != expectedEIR);
