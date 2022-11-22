@@ -10,6 +10,9 @@ contract BaseTest is Test {
 	bytes internal constant ERC20_INVALID_BALANCE =
 		"ERC20: transfer amount exceeds balance";
 
+	bytes internal constant REVERT_ALREADY_INITIALIZED =
+		"Initializable: contract is already initialized";
+
 	uint256 private seed;
 
 	modifier prankAs(address caller) {
@@ -43,4 +46,23 @@ contract BaseTest is Test {
 
 		return newAddress_;
 	}
+
+	function assertEqTolerance(
+		uint256 a,
+		uint256 b,
+		uint256 tolerancePercentage //4 decimals
+	) internal {
+		uint256 diff = b > a ? b - a : a - b;
+		uint256 maxForgivness = (b * tolerancePercentage) / 100_000;
+
+		if (maxForgivness < diff) {
+			emit log("Error: a == b not satisfied [with tolerance]");
+			emit log_named_uint("  A", a);
+			emit log_named_uint("  B", b);
+			emit log_named_uint("  Max tolerance", maxForgivness);
+			emit log_named_uint("    Actual Difference", diff);
+			fail();
+		}
+	}
 }
+

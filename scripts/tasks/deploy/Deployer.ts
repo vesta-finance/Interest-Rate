@@ -1,99 +1,108 @@
-import { IDeployConfig } from "../../config/DeployConfig"
-import { DeploymentHelper } from "../../utils/DeploymentHelper"
-import { HardhatRuntimeEnvironment } from "hardhat/types/runtime"
-import { HardhatEthersHelpers } from "@nomiclabs/hardhat-ethers/types"
-import { colorLog, Colors } from "../../utils/ColorConsole"
-import { Contract } from "ethers"
+import {
+	ContractConfig,
+	IDeployConfig,
+	ModuleConfig,
+} from "../../config/DeployConfig";
+import { DeploymentHelper } from "../../utils/DeploymentHelper";
+import { HardhatRuntimeEnvironment } from "hardhat/types/runtime";
+import { HardhatEthersHelpers } from "@nomiclabs/hardhat-ethers/types";
+import { Contract } from "ethers";
 
 export class Deployer {
-	config: IDeployConfig
-	helper: DeploymentHelper
-	ethers: HardhatEthersHelpers
-	hre: HardhatRuntimeEnvironment
+	config: IDeployConfig;
+	helper: DeploymentHelper;
+	ethers: HardhatEthersHelpers;
+	hre: HardhatRuntimeEnvironment;
+	safetyVault?: Contract;
+	interestManager?: Contract;
 
 	constructor(config: IDeployConfig, hre: HardhatRuntimeEnvironment) {
-		this.hre = hre
-		this.ethers = hre.ethers
-		this.config = config
-		this.helper = new DeploymentHelper(config, hre)
+		this.hre = hre;
+		this.ethers = hre.ethers;
+		this.config = config;
+		this.helper = new DeploymentHelper(config, hre);
 	}
 
 	async run() {
-		const [signer] = await this.ethers.getSigners()
-		console.log(`\nActive Deployer: ${signer.address}`)
+		const contractsConfig = this.config.configs!;
 
-		//Example deploying
-		const defaultContract: Contract = await this.deployContractExample()
+		if (contractsConfig == undefined) throw "Config Not found";
 
-		console.log(
-			`\nDefault Contract deployed at ${defaultContract.address} on ${this.hre.network.name}`
-		)
+		this.safetyVault = await this.helper.deployUpgradeableContractWithName(
+			"SafetyVault",
+			"SafetyVault"
+		);
 
-		//Example fetching contract deployed contract on different chain
-		console.log(
-			`\nKovan's Default Contract address is: ${
-				this.getDefaultContractFromKovanExample()[1]
-			}`
-		)
+		this.interestManager =
+			await this.helper.deployUpgradeableContractWithName(
+				"VestaInterestManager",
+				"VestaInterestManager",
+				"setUp",
+				contractsConfig.vst,
+				contractsConfig.troveManager,
+				contractsConfig.priceFeed
+			);
 
-		//Example loading an already deployed contract.
-		const testLoadingContract: Contract | undefined =
-			await this.loadSavedContractExample()
+		await this.deployModule(contractsConfig);
 
-		const loadingMessage: String =
-			testLoadingContract !== undefined
-				? `Successfully loaded defaultContract-${testLoadingContract.address} with history`
-				: "Failed to load defaultContract with history"
+		await this.transferOwnership(this.safetyVault, contractsConfig.admin);
+		await this.transferOwnership(
+			this.interestManager,
+			contractsConfig.admin
+		);
 
-		console.log(loadingMessage)
+		if (
+			(await this.hre.upgrades.admin.getInstance()).address !=
+			contractsConfig.admin
+		) {
+			await this.helper.sendAndWaitForTransaction(
+				this.hre.upgrades.admin.transferProxyAdminOwnership(
+					contractsConfig.admin
+				)
+			);
+		}
 	}
 
-	private async deployContractExample(): Promise<Contract> {
-		const networkName: string = this.hre.network.name
+	async deployModule(contractConfig: ContractConfig) {
+		const modules: ModuleConfig[] = contractConfig.modules!;
 
-		/* 
-		Lazy example of how I would use the cross-chain config
-		You can find the type config inside ./scripts/config/DeployConfig.ts
-		You can find the configuration inside ./scripts/tasks/deploy/deploy.testnet.ts
-
-		In a real envrionment, CoontractConfigExample should not be nullable.
-
-		To make things easier for you, the name you use in your hardhat config should be the same of SupportedChain 
-		in ./scripts/config/NetworkConfig.ts
-		*/
-		if (this.config.ContractConfigExample !== undefined) {
-			if (this.config.ContractConfigExample[networkName] === undefined) {
-				colorLog(
-					Colors.red,
-					`ContractConfigExample isn't configured for ${networkName}`
-				)
-
-				//Normally you should call a throw();
-			} else {
-				colorLog(
-					Colors.green,
-					`Loaded ContractConfigExample of ${networkName}`
-				)
-			}
+		if (modules == undefined) throw "No module found";
+		if (this.safetyVault == undefined) throw "SafetyVault undefined";
+		if (this.interestManager == undefined) {
+			throw "InterestManager undefined";
 		}
 
-		return await this.helper.deployContractByName(
-			"Contract",
-			"DefaultContract"
-		)
+		for (const module of modules) {
+			const contract = await this.helper.deployUpgradeableContractWithName(
+				"VestaEIR",
+				module.name,
+				"setUp",
+				contractConfig.vst,
+				contractConfig.borrowerOperator,
+				this.safetyVault!.address,
+				this.interestManager!.address,
+				module.name,
+				module.symbole,
+				module.risk
+			);
+
+			await this.helper.sendAndWaitForTransaction(
+				this.interestManager!.setModuleFor(
+					module.linkedToken,
+					contract.address
+				)
+			);
+
+			await this.transferOwnership(contract, contractConfig.admin);
+		}
 	}
 
-	private getDefaultContractFromKovanExample(): [boolean, string] {
-		return this.helper.getOtherChainContractAddress(
-			"kovan",
-			"DefaultContract"
-		)
-	}
-
-	private async loadSavedContractExample(): Promise<Contract | undefined> {
-		return await this.helper.tryToLoadCachedContract(
-			"Contract",
-			"DefaultContract"
-		)
+	async transferOwnership(contract: Contract, admin: string) {
+		if ((await contract.owner()) != contract.admin && admin != undefined) {
+			await this.helper.sendAndWaitForTransaction(
+				contract.transferOwnership(admin)
+			);
+		}
 	}
 }
+
