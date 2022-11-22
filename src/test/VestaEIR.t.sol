@@ -4,10 +4,13 @@ pragma solidity ^0.8.4;
 import "./base/BaseTest.t.sol";
 import { VestaEIR } from "../main/VestaEIR.sol";
 import { IInterestManager } from "../main/interface/IInterestManager.sol";
+import { IVSTOperator } from "../main/interface/IVSTOperator.sol";
 import { MockERC20 } from "./mock/MockERC20.sol";
 
 contract VestaEIRTest is BaseTest {
 	using stdJson for string;
+
+	event InterestMinted(uint256 mintedInterest);
 
 	struct JsonSimulation {
 		uint256[] users;
@@ -24,10 +27,12 @@ contract VestaEIRTest is BaseTest {
 		uint256 expectedEIR;
 	}
 
-	bytes private constant REVERT_NOT_TROVEMANAGER =
+	bytes private constant REVERT_NOT_INTERET_MANAGER =
 		abi.encodeWithSignature("NotInterestManager()");
 	bytes private constant REVERT_CANNOT_BE_ZERO =
 		abi.encodeWithSignature("CannotBeZero()");
+	bytes private constant REVERT_NO_DEBT_FOUND =
+		abi.encodeWithSignature("NoDebtFound()");
 
 	string private constant KEY_USERS = ".users";
 	string private constant KEY_SEQUENCES = ".sequences";
@@ -95,6 +100,30 @@ contract VestaEIRTest is BaseTest {
 		assertEq(underTest.owner(), owner);
 	}
 
+	function test_setup_whenAlreadyInitialized_thenReverts() external {
+		underTest = new VestaEIR();
+		underTest.setUp(
+			mockVST,
+			mockVSTOperator,
+			mockSafetyVault,
+			mockInterestManager,
+			"Vesta EIR Test Module",
+			"vETM",
+			0
+		);
+
+		vm.expectRevert(REVERT_ALREADY_INITIALIZED);
+		underTest.setUp(
+			mockVST,
+			mockVSTOperator,
+			mockSafetyVault,
+			mockInterestManager,
+			"Vesta EIR Test Module",
+			"vETM",
+			0
+		);
+	}
+
 	function test_setup_thenContractCorrectlyConfigured()
 		external
 		prankAs(owner)
@@ -141,26 +170,12 @@ contract VestaEIRTest is BaseTest {
 		assertTrue(address(underTest.gem()) != address(0));
 	}
 
-	function test_getEIR_thenIsValid() external {
-		assertEq(underTest.getEIR(0, 0.95e18), 9051);
-		assertEq(underTest.getEIR(0, 0.98e18), 400);
-		assertEq(underTest.getEIR(0, 1e18), 50);
-
-		assertEq(underTest.getEIR(1, 0.98e18), 600);
-		assertEq(underTest.getEIR(1, 1e18), 75);
-
-		assertEq(underTest.getEIR(2, 0.98e18), 1000);
-		assertEq(underTest.getEIR(2, 1e18), 125);
-		assertEq(underTest.getEIR(2, 1.03e18), 6);
-		assertEq(underTest.getEIR(2, 1.05e18), 1);
-	}
-
 	function test_increaseDebt_asUser_thenReverts() external prankAs(userA) {
-		vm.expectRevert(REVERT_NOT_TROVEMANAGER);
+		vm.expectRevert(REVERT_NOT_INTERET_MANAGER);
 		underTest.increaseDebt(userA, 1e18);
 	}
 
-	function test_increaseDebt_asTroveManager_thenCallUpdateEIR()
+	function test_increaseDebt_asInterestManager_thenCallUpdateEIR()
 		external
 		prankAs(mockInterestManager)
 	{
@@ -170,7 +185,7 @@ contract VestaEIRTest is BaseTest {
 		assertEq(underTest.currentEIR(), 9051);
 	}
 
-	function test_increaseDebt_asTroveManager_givenUserA_whenSystemEmpty_thenUpdateSystem()
+	function test_increaseDebt_asInterestManager_givenUserA_whenSystemEmpty_thenUpdateSystem()
 		external
 		prankAs(mockInterestManager)
 	{
@@ -185,7 +200,7 @@ contract VestaEIRTest is BaseTest {
 		assertEq(emittedInterest, 0);
 	}
 
-	function test_increaseDebt_asTroveManager_givenUserB_whenSystemIsNotEmpty_thenGivesCorrectShare()
+	function test_increaseDebt_asInterestManager_givenUserB_whenSystemIsNotEmpty_thenGivesCorrectShare()
 		external
 		prankAs(mockInterestManager)
 	{
@@ -202,7 +217,7 @@ contract VestaEIRTest is BaseTest {
 		assertEq(underTest.stake(userB), expectShareB);
 	}
 
-	function test_increaseDebt_asTroveManager_givenUserA_whenNotFirstTimeTimeAndTimePassed_thenApplyInterestRate()
+	function test_increaseDebt_asInterestManager_givenUserA_whenNotFirstTimeTimeAndTimePassed_thenApplyInterestRate()
 		external
 		prankAs(mockInterestManager)
 	{
@@ -217,11 +232,11 @@ contract VestaEIRTest is BaseTest {
 	}
 
 	function test_decreaseDebt_asUser_thenReverts() external prankAs(userA) {
-		vm.expectRevert(REVERT_NOT_TROVEMANAGER);
+		vm.expectRevert(REVERT_NOT_INTERET_MANAGER);
 		underTest.decreaseDebt(userA, 1e18);
 	}
 
-	function test_decreaseDebt_asTroveManager_givenZeroDebt_thenReverts()
+	function test_decreaseDebt_asInterestManager_givenZeroDebt_thenReverts()
 		external
 		prankAs(mockInterestManager)
 	{
@@ -229,7 +244,7 @@ contract VestaEIRTest is BaseTest {
 		underTest.decreaseDebt(userA, 0);
 	}
 
-	function test_decreaseDebt_asTroveManager_givenUserWithNoDebt_thenReverts()
+	function test_decreaseDebt_asInterestManager_givenUserWithNoDebt_thenReverts()
 		external
 		prankAs(mockInterestManager)
 	{
@@ -237,7 +252,7 @@ contract VestaEIRTest is BaseTest {
 		underTest.decreaseDebt(userA, 1e18);
 	}
 
-	function test_decreaseDebt_asTroveManager_givenUserAWithDebt_thenDistributeAndUpdateShare()
+	function test_decreaseDebt_asInterestManager_givenUserAWithDebt_thenDistributeAndUpdateShare()
 		external
 		prankAs(mockInterestManager)
 	{
@@ -263,15 +278,156 @@ contract VestaEIRTest is BaseTest {
 	}
 
 	function test_exit_asUser_thenReverts() external prankAs(userA) {
-		vm.expectRevert(REVERT_NOT_TROVEMANAGER);
+		vm.expectRevert(REVERT_NOT_INTERET_MANAGER);
 		underTest.exit(userA);
 	}
 
-	function test_exit_asTroveManager_givenNonExistantUser_thenReverts()
+	function test_exit_asInterestManager_givenNonExistantUser_thenReverts()
 		external
 		prankAs(mockInterestManager)
 	{
+		vm.expectRevert(REVERT_NO_DEBT_FOUND);
 		underTest.exit(userA);
+	}
+
+	function test_exit_asInterestManager_givenDebtUser_thenExitsAndReturnsAddedInterestRate()
+		external
+		prankAs(mockInterestManager)
+	{
+		uint256 debtA = 764.23e18;
+		underTest.increaseDebt(userA, debtA);
+
+		_skipAndUpdateInterest(63 days, 0.98e18);
+
+		uint256 addedInterestRate = underTest.exit(userA);
+
+		assertEq(addedInterestRate, 659373279427298707);
+		assertEq(underTest.getDebtOf(userA), 0);
+		assertEq(underTest.stake(userA), 0);
+	}
+
+	function test_updateEIR_asUser_thenReverts() external prankAs(userA) {
+		vm.expectRevert(REVERT_NOT_INTERET_MANAGER);
+		underTest.updateEIR(0);
+	}
+
+	function test_updateEIR_asInterestManager_whenNotMinutePassed_thenUpdateEIR()
+		external
+		prankAs(mockInterestManager)
+	{
+		uint256 price = 0.92e18;
+		uint256 expectedEIR = underTest.getEIR(0, price);
+		uint256 oldEIR = underTest.currentEIR();
+		uint256 lastUpdate = underTest.lastUpdate();
+
+		skip(59 seconds);
+		underTest.updateEIR(price);
+
+		assertTrue(oldEIR != expectedEIR);
+		assertEq(underTest.currentEIR(), expectedEIR);
+		assertEq(underTest.lastUpdate(), lastUpdate);
+	}
+
+	function test_updateEIR_asInterestManager_whenMinutePassed_thenUpdateSystemAndEmitsInterestMinted()
+		external
+		prankAs(mockInterestManager)
+	{
+		underTest.increaseDebt(userA, 300e18);
+
+		uint256 price = 0.92e18;
+		uint256 lastUpdate = underTest.lastUpdate();
+		uint256 expectedMintedInterest = 2851925595000;
+
+		skip(1 minutes);
+
+		vm.expectEmit(true, true, true, true);
+		emit InterestMinted(expectedMintedInterest);
+
+		vm.expectCall(
+			mockVSTOperator,
+			abi.encodeWithSelector(
+				IVSTOperator.mint.selector,
+				mockSafetyVault,
+				expectedMintedInterest
+			)
+		);
+
+		underTest.updateEIR(price);
+
+		assertEq(underTest.lastUpdate(), lastUpdate + 1 minutes);
+		assertEq(underTest.totalDebt(), 300e18 + expectedMintedInterest);
+	}
+
+	function test_getNotEmmitedInterestRate_whenSystemIsZero_thenReturnsZero()
+		external
+	{
+		assertEq(underTest.getNotEmittedInterestRate(userA), 0);
+	}
+
+	function test_getNotEmmitedInterestRate_whenUserHasZeroDebt_thenReturnsZero()
+		external
+	{
+		vm.prank(mockInterestManager);
+		underTest.increaseDebt(userA, 1000e18);
+
+		skip(6 hours);
+
+		assertEq(underTest.getNotEmittedInterestRate(userB), 0);
+	}
+
+	function test_getNotEmmitedInterestRate_whenUserHasDebtButNoMinutePassedSinceLastUpdate_thenReturnsZero()
+		external
+	{
+		vm.prank(mockInterestManager);
+		underTest.increaseDebt(userA, 1000e18);
+
+		skip(59 seconds);
+
+		assertEq(underTest.getNotEmittedInterestRate(userA), 0);
+	}
+
+	function test_getNotEmmitedInterestRate_whenUserHasDebtAndMinutesPassedSinceLastUpdate_thenReturnsInterestRate()
+		external
+	{
+		uint256 expectedInterest = 1711156813013000;
+
+		vm.prank(mockInterestManager);
+		underTest.increaseDebt(userA, 1000e18);
+
+		skip(3 hours);
+
+		assertEq(underTest.getNotEmittedInterestRate(userA), expectedInterest);
+	}
+
+	function test_getEIR_thenIsValid() external {
+		assertEq(underTest.getEIR(0, 0.95e18), 9051);
+		assertEq(underTest.getEIR(0, 0.98e18), 400);
+		assertEq(underTest.getEIR(0, 1e18), 50);
+
+		assertEq(underTest.getEIR(1, 0.98e18), 600);
+		assertEq(underTest.getEIR(1, 1e18), 75);
+
+		assertEq(underTest.getEIR(2, 0.98e18), 1000);
+		assertEq(underTest.getEIR(2, 1e18), 125);
+		assertEq(underTest.getEIR(2, 1.03e18), 6);
+		assertEq(underTest.getEIR(2, 1.05e18), 1);
+	}
+
+	function test_getEIR_whenLowerOrHigherThanLimit_thenReturnsMinMaxValue()
+		external
+	{
+		assertEq(underTest.getEIR(0, 0.8e18), 9051);
+		assertEq(underTest.getEIR(0, 2e18), 1);
+	}
+
+	function test_getDebtOf_thenReturnsSameDebt() external {
+		uint256 debt = 3023.2e18;
+
+		vm.prank(mockInterestManager);
+		underTest.increaseDebt(userA, debt);
+
+		assertEq(underTest.getDebtOf(userA), debt);
+		assertEq(underTest.getDebtOf(userB), 0);
 	}
 
 	function test_getUserInterest_givenSpecificNumber_thenEqualsNumbers()

@@ -14,6 +14,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+// Version Modified by Vesta Finance
+
 pragma solidity ^0.8.17;
 
 import { Math } from "../lib/Math.sol";

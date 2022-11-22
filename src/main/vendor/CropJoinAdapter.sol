@@ -2,7 +2,7 @@
 
 pragma solidity ^0.8.17;
 
-import "./vendor/CropJoin.sol";
+import "./CropJoin.sol";
 
 // NOTE! - this is not an ERC20 token. transfer is not supported.
 abstract contract CropJoinAdapter is CropJoin {

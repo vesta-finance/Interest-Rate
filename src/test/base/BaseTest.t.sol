@@ -10,6 +10,9 @@ contract BaseTest is Test {
 	bytes internal constant ERC20_INVALID_BALANCE =
 		"ERC20: transfer amount exceeds balance";
 
+	bytes internal constant REVERT_ALREADY_INITIALIZED =
+		"Initializable: contract is already initialized";
+
 	uint256 private seed;
 
 	modifier prankAs(address caller) {

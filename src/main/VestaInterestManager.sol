@@ -1,25 +1,25 @@
+// SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.17;
 
-import "./interface/IModuleInterest.sol";
-import "./interface/IPriceFeed.sol";
-import "./interface/IInterestManager.sol";
+import { IInterestManager } from "./interface/IInterestManager.sol";
+
+import { IModuleInterest } from "./interface/IModuleInterest.sol";
+import { IPriceFeed } from "./interface/IPriceFeed.sol";
+
 import { OwnableUpgradeable } from "openzeppelin-contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 contract VestaInterestManager is IInterestManager, OwnableUpgradeable {
-	error NotInterestManager();
-	error ErrorModuleAlreadySet();
+	uint256 private vstPrice;
 
 	address public vst;
 	address public troveManager;
 	IPriceFeed public oracle;
 
-	uint256 private vstPrice;
-
 	mapping(address => address) private interestByTokens;
 	address[] private interestModules;
 
 	modifier onlyTroveManager() {
-		if (msg.sender != troveManager) revert NotInterestManager();
+		if (msg.sender != troveManager) revert NotTroveManager();
 
 		_;
 	}
@@ -43,12 +43,14 @@ contract VestaInterestManager is IInterestManager, OwnableUpgradeable {
 		external
 		onlyOwner
 	{
-		if (_getInterestModule(_token) != address(0)) {
+		if (getInterestModule(_token) != address(0)) {
 			revert ErrorModuleAlreadySet();
 		}
 
 		interestByTokens[_token] = _module;
 		interestModules.push(_module);
+
+		IModuleInterest(_module).updateEIR(vstPrice);
 	}
 
 	function increaseDebt(
@@ -59,7 +61,7 @@ contract VestaInterestManager is IInterestManager, OwnableUpgradeable {
 		_updateModules();
 
 		return
-			IModuleInterest(_getInterestModule(_token)).increaseDebt(
+			IModuleInterest(getInterestModule(_token)).increaseDebt(
 				_user,
 				_debt
 			);
@@ -73,7 +75,7 @@ contract VestaInterestManager is IInterestManager, OwnableUpgradeable {
 		_updateModules();
 
 		return
-			IModuleInterest(_getInterestModule(_token)).decreaseDebt(
+			IModuleInterest(getInterestModule(_token)).decreaseDebt(
 				_user,
 				_debt
 			);
@@ -94,7 +96,7 @@ contract VestaInterestManager is IInterestManager, OwnableUpgradeable {
 		override
 		returns (uint256 currentDebt_, uint256 pendingInterest_)
 	{
-		IModuleInterest module = IModuleInterest(_getInterestModule(_token));
+		IModuleInterest module = IModuleInterest(getInterestModule(_token));
 
 		return (
 			module.getDebtOf(_user),
@@ -102,12 +104,16 @@ contract VestaInterestManager is IInterestManager, OwnableUpgradeable {
 		);
 	}
 
-	function _getInterestModule(address _token)
-		internal
+	function getInterestModule(address _token)
+		public
 		view
 		returns (address)
 	{
 		return interestByTokens[_token];
+	}
+
+	function getModules() external view returns (address[] memory) {
+		return interestModules;
 	}
 
 	function getLastVstPrice() external view override returns (uint256) {

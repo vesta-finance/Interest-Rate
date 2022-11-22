@@ -1,6 +1,9 @@
 pragma solidity >=0.8.0;
 
 interface IInterestManager {
+	error NotTroveManager();
+	error ErrorModuleAlreadySet();
+
 	function increaseDebt(
 		address _token,
 		address _user,

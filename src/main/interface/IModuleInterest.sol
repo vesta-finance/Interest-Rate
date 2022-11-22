@@ -1,6 +1,12 @@
 pragma solidity >=0.8.0;
 
 interface IModuleInterest {
+	error NotInterestManager();
+	error CannotBeZero();
+	error NoDebtFound();
+
+	event InterestMinted(uint256 _interest);
+
 	function increaseDebt(address _vault, uint256 _debt)
 		external
 		returns (uint256 addedInterest_);

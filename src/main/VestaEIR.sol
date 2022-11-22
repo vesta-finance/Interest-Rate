@@ -1,28 +1,21 @@
-// SPDX-License-Identifier: GPL-3.0
+// SPDX-License-Identifier: BUSL-1.1
 
 pragma solidity ^0.8.17;
 
-import "./lib/FullMath.sol";
-import "./CropJoinAdapter.sol";
-import "./interface/IVSTOperator.sol";
-import "./interface/IERC20.sol";
-import "./interface/IModuleInterest.sol";
-import "./interface/IInterestManager.sol";
+import { IModuleInterest } from "./interface/IModuleInterest.sol";
+import { IVSTOperator } from "./interface/IVSTOperator.sol";
+import { IERC20 } from "./interface/IERC20.sol";
+import { IInterestManager } from "./interface/IInterestManager.sol";
 
-import "prb-math/PRBMathSD59x18.sol";
-import "prb-math/PRBMathUD60x18.sol";
+import { CropJoinAdapter, Math } from "./vendor/CropJoinAdapter.sol";
+import { FullMath } from "./lib/FullMath.sol";
 
-import { console2 as console } from "forge-std/console2.sol";
+import { PRBMathSD59x18 } from "prb-math/PRBMathSD59x18.sol";
+import { PRBMathUD60x18 } from "prb-math/PRBMathUD60x18.sol";
 
 contract VestaEIR is CropJoinAdapter, IModuleInterest {
 	using PRBMathSD59x18 for int256;
 	using PRBMathUD60x18 for uint256;
-
-	error NotInterestManager();
-	error CannotBeZero();
-
-	event InterestMinted(uint256 _interest);
-	event InterestSentToSafetyVault(uint256 _interest);
 
 	uint256 public constant PRECISION = 1e18;
 	uint256 private YEAR_MINUTE = 1.901285e6;
@@ -121,11 +114,14 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 		onlyInterestManager
 		returns (uint256 addedInterest_)
 	{
+		if (balances[_vault] == 0) revert NoDebtFound();
+
 		addedInterest_ = _distributeInterestRate(_vault);
 
 		balances[_vault] = 0;
 
 		_burn(_vault, balanceOf(_vault));
+
 		return addedInterest_;
 	}
 
