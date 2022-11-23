@@ -28,18 +28,23 @@ contract VestaInterestManagerTest is BaseTest {
 
 	uint256 private constant DEFAULT_VST_PRICE = 0.98e18;
 
-	address owner = generateAddress("Owner", false);
-	address user = generateAddress("User", false);
+	address private owner = generateAddress("Owner", false);
+	address private user = generateAddress("User", false);
 
-	address mockTokenA = generateAddress("TokenA", true);
-	address mockModuleA = generateAddress("Interest ModuleA", true);
+	address private mockTokenA = generateAddress("TokenA", true);
+	address private mockModuleA = generateAddress("Interest ModuleA", true);
 
-	address mockTokenB = generateAddress("TokenB", true);
-	address mockModuleB = generateAddress("Interest ModuleB", true);
+	address private mockTokenB = generateAddress("TokenB", true);
+	address private mockModuleB = generateAddress("Interest ModuleB", true);
 
-	address mockVst = generateAddress("VST", true);
-	address mockTroveManager = generateAddress("Trove Manager", true);
-	address mockPriceFeed = generateAddress("PriceFeed", true);
+	address private mockVst = generateAddress("VST", true);
+	address private mockTroveManager =
+		generateAddress("Trove Manager", true);
+	address private mockPriceFeed = generateAddress("PriceFeed", true);
+	address private mockSafetyVault = generateAddress("SafetyVault", true);
+
+	address private mockVSTOperator =
+		generateAddress("mockVSTOperator", true);
 
 	VestaInterestManager private underTest;
 
@@ -49,7 +54,13 @@ contract VestaInterestManagerTest is BaseTest {
 		_mockVSTPrice(DEFAULT_VST_PRICE);
 
 		vm.startPrank(owner);
-		underTest.setUp(mockVst, mockTroveManager, mockPriceFeed);
+		underTest.setUp(
+			mockVst,
+			mockTroveManager,
+			mockPriceFeed,
+			mockVSTOperator,
+			mockSafetyVault
+		);
 
 		_mockUpdateEIRCall(mockModuleA, DEFAULT_VST_PRICE, 0);
 		_mockUpdateEIRCall(mockModuleB, DEFAULT_VST_PRICE, 0);
@@ -62,6 +73,12 @@ contract VestaInterestManagerTest is BaseTest {
 		_mockGetDebtOf(mockModuleA, user, 0);
 		_mockGetDebtOf(mockModuleB, user, 0);
 		_mockVSTPrice(DEFAULT_VST_PRICE);
+
+		vm.mockCall(
+			mockVSTOperator,
+			abi.encodeWithSelector(IVSTOperator.mint.selector),
+			abi.encode(true)
+		);
 	}
 
 	function test_setUp_thenSetupCorrectlyContract()
@@ -69,13 +86,21 @@ contract VestaInterestManagerTest is BaseTest {
 		prankAs(owner)
 	{
 		underTest = new VestaInterestManager();
-		underTest.setUp(mockVst, mockTroveManager, mockPriceFeed);
+		underTest.setUp(
+			mockVst,
+			mockTroveManager,
+			mockPriceFeed,
+			mockVSTOperator,
+			mockSafetyVault
+		);
 
 		assertEq(underTest.owner(), owner);
 		assertEq(underTest.vst(), mockVst);
 		assertEq(underTest.troveManager(), mockTroveManager);
 		assertEq(address(underTest.oracle()), mockPriceFeed);
 		assertEq(underTest.getLastVstPrice(), DEFAULT_VST_PRICE);
+		assertEq(address(underTest.vstOperator()), mockVSTOperator);
+		assertEq(underTest.safetyVault(), mockSafetyVault);
 	}
 
 	function test_setUp_givenOracleFailling_thenReverts() external {
@@ -83,15 +108,49 @@ contract VestaInterestManagerTest is BaseTest {
 
 		vm.expectRevert(REVERT_ORACLE_FAILED);
 		_mockVSTPrice(0);
-		underTest.setUp(mockVst, mockTroveManager, mockPriceFeed);
+		underTest.setUp(
+			mockVst,
+			mockTroveManager,
+			mockPriceFeed,
+			mockVSTOperator,
+			mockSafetyVault
+		);
 	}
 
 	function test_setUp_whenAlreadyInitialized_thenReverts() external {
 		underTest = new VestaInterestManager();
-		underTest.setUp(mockVst, mockTroveManager, mockPriceFeed);
+		underTest.setUp(
+			mockVst,
+			mockTroveManager,
+			mockPriceFeed,
+			mockVSTOperator,
+			mockSafetyVault
+		);
 
 		vm.expectRevert(REVERT_ALREADY_INITIALIZED);
-		underTest.setUp(mockVst, mockTroveManager, mockPriceFeed);
+		underTest.setUp(
+			mockVst,
+			mockTroveManager,
+			mockPriceFeed,
+			mockVSTOperator,
+			mockSafetyVault
+		);
+	}
+
+	function test_setSafetyVault_asUser_thenReverts()
+		external
+		prankAs(user)
+	{
+		vm.expectRevert(NOT_OWNER);
+		underTest.setSafetyVault(address(this));
+	}
+
+	function test_setSafetyVault_asOwner_thenUpdatesSystem()
+		external
+		prankAs(owner)
+	{
+		underTest.setSafetyVault(address(this));
+		assertEq(underTest.safetyVault(), address(this));
 	}
 
 	function test_setModuleFor_asNoOwner_thenReverts() external {
@@ -318,7 +377,7 @@ contract VestaInterestManagerTest is BaseTest {
 		underTest.decreaseDebt(mockTokenA, user, 300e18);
 	}
 
-	function test_updateModules_givenTimePassed_thenUpdatesAndEmitsInterestMintedEvent()
+	function test_updateModules_givenTimePassed_thenUpdatesAndMintAndEmitsInterestMintedEvent()
 		external
 		prankAs(mockTroveManager)
 	{
@@ -336,6 +395,15 @@ contract VestaInterestManagerTest is BaseTest {
 
 		vm.expectEmit(true, true, true, true);
 		emit InterestMinted(mockModuleB, expectedInterestB);
+
+		vm.expectCall(
+			mockVSTOperator,
+			abi.encodeWithSelector(
+				IVSTOperator.mint.selector,
+				mockSafetyVault,
+				(expectedInterestA + expectedInterestB)
+			)
+		);
 
 		underTest.updateModules();
 	}

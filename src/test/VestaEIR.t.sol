@@ -57,19 +57,13 @@ contract VestaEIRTest is BaseTest {
 	address private userA = generateAddress("userA", false);
 	address private userB = generateAddress("userB", false);
 	address private userC = generateAddress("userC", false);
-	address private mockSafetyVault = generateAddress("Safety Vault", true);
 	address private mockInterestManager =
 		generateAddress("Interest Manager", true);
-	address private mockVST;
-	address private mockVSTOperator;
 
 	VestaEIR private underTest;
 
 	function setUp() public {
 		vm.warp(1666996415);
-
-		mockVST = address(new MockERC20("VST", "VST", 18));
-		mockVSTOperator = address(new VSTOperatorMock(mockVST));
 
 		vm.mockCall(
 			mockInterestManager,
@@ -81,9 +75,6 @@ contract VestaEIRTest is BaseTest {
 
 		vm.prank(owner);
 		underTest.setUp(
-			mockVST,
-			mockVSTOperator,
-			mockSafetyVault,
 			mockInterestManager,
 			"Vesta EIR Test Module",
 			"vETM",
@@ -94,9 +85,6 @@ contract VestaEIRTest is BaseTest {
 	function test_setup_thenCallerIsOwner() external prankAs(owner) {
 		underTest = new VestaEIR();
 		underTest.setUp(
-			mockVST,
-			mockVSTOperator,
-			mockSafetyVault,
 			mockInterestManager,
 			"Vesta EIR Test Module",
 			"vETM",
@@ -109,9 +97,6 @@ contract VestaEIRTest is BaseTest {
 	function test_setup_whenAlreadyInitialized_thenReverts() external {
 		underTest = new VestaEIR();
 		underTest.setUp(
-			mockVST,
-			mockVSTOperator,
-			mockSafetyVault,
 			mockInterestManager,
 			"Vesta EIR Test Module",
 			"vETM",
@@ -120,9 +105,6 @@ contract VestaEIRTest is BaseTest {
 
 		vm.expectRevert(REVERT_ALREADY_INITIALIZED);
 		underTest.setUp(
-			mockVST,
-			mockVSTOperator,
-			mockSafetyVault,
 			mockInterestManager,
 			"Vesta EIR Test Module",
 			"vETM",
@@ -137,18 +119,12 @@ contract VestaEIRTest is BaseTest {
 		underTest = new VestaEIR();
 
 		underTest.setUp(
-			mockVST,
-			mockVSTOperator,
-			mockSafetyVault,
 			mockInterestManager,
 			"Vesta EIR Test Module",
 			"vETM",
 			1
 		);
 
-		assertEq(address(underTest.vst()), mockVST);
-		assertEq(address(underTest.vstOperator()), mockVSTOperator);
-		assertEq(underTest.safetyVault(), mockSafetyVault);
 		assertEq(underTest.interestManager(), mockInterestManager);
 		assertEq(underTest.lastUpdate(), block.timestamp);
 		assertEq(underTest.risk(), 1);
@@ -161,9 +137,6 @@ contract VestaEIRTest is BaseTest {
 	{
 		underTest = new VestaEIR();
 		underTest.setUp(
-			mockVST,
-			mockVSTOperator,
-			mockSafetyVault,
 			mockInterestManager,
 			"Vesta EIR Test Module",
 			"vETM",
@@ -196,22 +169,6 @@ contract VestaEIRTest is BaseTest {
 		assertEq(underTest.risk(), 2);
 		assertEq(underTest.currentEIR(), expectingEIR);
 		assertTrue(underTest.currentEIR() != oldCurrentEIR);
-	}
-
-	function test_setSafetyVault_asUser_thenReverts()
-		external
-		prankAs(userA)
-	{
-		vm.expectRevert(NOT_OWNER);
-		underTest.setSafetyVault(address(this));
-	}
-
-	function test_setSafetyVault_asOwner_thenUpdatesSystem()
-		external
-		prankAs(owner)
-	{
-		underTest.setSafetyVault(address(this));
-		assertEq(underTest.safetyVault(), address(this));
 	}
 
 	function test_increaseDebt_asUser_thenReverts() external prankAs(userA) {
@@ -409,15 +366,6 @@ contract VestaEIRTest is BaseTest {
 
 		vm.expectEmit(true, true, true, true);
 		emit InterestMinted(expectedMintedInterest);
-
-		vm.expectCall(
-			mockVSTOperator,
-			abi.encodeWithSelector(
-				IVSTOperator.mint.selector,
-				mockSafetyVault,
-				expectedMintedInterest
-			)
-		);
 
 		underTest.updateEIR(price);
 
@@ -785,17 +733,5 @@ contract VestaEIRTest is BaseTest {
 			_i /= 10;
 		}
 		return string(bstr);
-	}
-}
-
-contract VSTOperatorMock {
-	MockERC20 private mockVST;
-
-	constructor(address _vst) {
-		mockVST = MockERC20(_vst);
-	}
-
-	function mint(address _to, uint256 _amount) external {
-		mockVST.mint(_to, _amount);
 	}
 }

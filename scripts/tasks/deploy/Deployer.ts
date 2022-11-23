@@ -40,7 +40,9 @@ export class Deployer {
 				"setUp",
 				contractsConfig.vst,
 				contractsConfig.troveManager,
-				contractsConfig.priceFeed
+				contractsConfig.priceFeed,
+				contractsConfig.borrowerOperator,
+				this.safetyVault!.address
 			);
 
 		await this.deployModule(contractsConfig);
@@ -77,9 +79,6 @@ export class Deployer {
 				"VestaEIR",
 				module.name,
 				"setUp",
-				contractConfig.vst,
-				contractConfig.borrowerOperator,
-				this.safetyVault!.address,
 				this.interestManager!.address,
 				module.name,
 				module.symbole,

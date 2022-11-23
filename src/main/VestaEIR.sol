@@ -3,8 +3,6 @@
 pragma solidity ^0.8.17;
 
 import { IModuleInterest } from "./interface/IModuleInterest.sol";
-import { IVSTOperator } from "./interface/IVSTOperator.sol";
-import { IERC20 } from "./interface/IERC20.sol";
 import { IInterestManager } from "./interface/IInterestManager.sol";
 
 import { CropJoinAdapter, Math } from "./vendor/CropJoinAdapter.sol";
@@ -26,9 +24,6 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 	uint256 public totalDebt;
 	uint8 public currentRisk;
 
-	IERC20 public vst;
-	IVSTOperator public vstOperator;
-	address public safetyVault;
 	uint8 public risk;
 
 	address public interestManager;
@@ -43,9 +38,6 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 	}
 
 	function setUp(
-		address _vst,
-		address _vstOperator,
-		address _safetyVault,
 		address _interestManager,
 		string memory _moduleName,
 		string memory _moduleSymbol,
@@ -53,9 +45,6 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 	) external initializer {
 		__INIT_ADAPTOR(_moduleName, _moduleSymbol);
 
-		vst = IERC20(_vst);
-		vstOperator = IVSTOperator(_vstOperator);
-		safetyVault = _safetyVault;
 		interestManager = _interestManager;
 		risk = _defaultRisk;
 
@@ -68,10 +57,6 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 		_updateEIR(IInterestManager(interestManager).getLastVstPrice());
 
 		emit RiskChanged(_newRisk);
-	}
-
-	function setSafetyVault(address _newSafetyVault) external onlyOwner {
-		safetyVault = _newSafetyVault;
 	}
 
 	function increaseDebt(address _vault, uint256 _debt)
@@ -178,8 +163,6 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 		uint256 interest = totalDebt - lastDebt;
 
 		interestMinted += interest;
-
-		vstOperator.mint(address(safetyVault), interest);
 		emit InterestMinted(interest);
 
 		return interest;

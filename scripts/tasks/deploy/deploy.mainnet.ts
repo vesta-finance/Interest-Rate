@@ -1,14 +1,16 @@
-import { IDeployConfig } from "../../config/DeployConfig"
-import { Deployer } from "./Deployer"
-import { colorLog, Colors, addColor } from "../../utils/ColorConsole"
-import { HardhatRuntimeEnvironment } from "hardhat/types/runtime"
-import readline from "readline-sync"
+import { IDeployConfig } from "../../config/DeployConfig";
+import { Deployer } from "./Deployer";
+import { colorLog, Colors, addColor } from "../../utils/ColorConsole";
+import { HardhatRuntimeEnvironment } from "hardhat/types/runtime";
+import readline from "readline-sync";
 
 const config: IDeployConfig = {
 	TX_CONFIRMATIONS: 3,
 	configs: {
+		admin: "0x4A4651B31d747D1DdbDDADCF1b1E24a5f6dcc7b0",
 		vst: "0x64343594Ab9b56e99087BfA6F2335Db24c2d1F17",
 		troveManager: "0x100EC08129e0FD59959df93a8b914944A3BbD5df",
+		borrowerOperator: "0x3eEDF348919D130954929d4ff62D626f26ADBFa2",
 		priceFeed: "0xd218Ba424A6166e37A454F8eCe2bf8eB2264eCcA",
 		modules: [
 			//ETH
@@ -48,25 +50,25 @@ const config: IDeployConfig = {
 			},
 		],
 	},
-}
+};
 
 export async function execute(hre: HardhatRuntimeEnvironment) {
-	var userinput: string = "0"
+	var userinput: string = "0";
 
 	userinput = readline.question(
 		addColor(
 			Colors.yellow,
 			`\nYou are about to deploy on the mainnet, is it fine? [y/N]\n`
 		)
-	)
+	);
 
 	if (userinput.toLowerCase() !== "y") {
-		colorLog(Colors.blue, `User cancelled the deployment!\n`)
-		return
+		colorLog(Colors.blue, `User cancelled the deployment!\n`);
+		return;
 	}
 
-	colorLog(Colors.green, `User approved the deployment\n`)
+	colorLog(Colors.green, `User approved the deployment\n`);
 
-	await new Deployer(config, hre).run()
+	await new Deployer(config, hre).run();
 }
 

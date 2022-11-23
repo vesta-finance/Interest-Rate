@@ -5,6 +5,7 @@ import { IInterestManager } from "./interface/IInterestManager.sol";
 
 import { IModuleInterest } from "./interface/IModuleInterest.sol";
 import { IPriceFeed } from "./interface/IPriceFeed.sol";
+import { IVSTOperator } from "./interface/IVSTOperator.sol";
 
 import { OwnableUpgradeable } from "openzeppelin-contracts-upgradeable/access/OwnableUpgradeable.sol";
 
@@ -13,10 +14,12 @@ contract VestaInterestManager is IInterestManager, OwnableUpgradeable {
 
 	address public vst;
 	address public troveManager;
+	address public safetyVault;
 	IPriceFeed public oracle;
+	IVSTOperator public vstOperator;
 
-	mapping(address => address) private interestByTokens;
 	address[] private interestModules;
+	mapping(address => address) private interestByTokens;
 
 	modifier onlyTroveManager() {
 		if (msg.sender != troveManager) revert NotTroveManager();
@@ -27,7 +30,9 @@ contract VestaInterestManager is IInterestManager, OwnableUpgradeable {
 	function setUp(
 		address _vst,
 		address _troveManager,
-		address _priceFeed
+		address _priceFeed,
+		address _vstOperator,
+		address _safetyVault
 	) external initializer {
 		__Ownable_init();
 
@@ -35,6 +40,8 @@ contract VestaInterestManager is IInterestManager, OwnableUpgradeable {
 		troveManager = _troveManager;
 		oracle = IPriceFeed(_priceFeed);
 		vstPrice = oracle.getExternalPrice(vst);
+		vstOperator = IVSTOperator(_vstOperator);
+		safetyVault = _safetyVault;
 
 		require(vstPrice > 0, "Oracle Failed to fetch VST price.");
 	}
@@ -53,6 +60,10 @@ contract VestaInterestManager is IInterestManager, OwnableUpgradeable {
 		IModuleInterest(_module).updateEIR(vstPrice);
 
 		emit ModuleLinked(_token, _module);
+	}
+
+	function setSafetyVault(address _newSafetyVault) external onlyOwner {
+		safetyVault = _newSafetyVault;
 	}
 
 	function increaseDebt(
@@ -96,14 +107,20 @@ contract VestaInterestManager is IInterestManager, OwnableUpgradeable {
 		uint256 totalModules = interestModules.length;
 
 		uint256 interestAdded;
+		uint256 totalInterestAdded;
 		IModuleInterest module;
 		for (uint256 i = 0; i < totalModules; ++i) {
 			module = IModuleInterest(interestModules[i]);
 			interestAdded = module.updateEIR(vstPrice);
 
 			if (interestAdded > 0) {
+				totalInterestAdded += interestAdded;
 				emit InterestMinted(address(module), interestAdded);
 			}
+		}
+
+		if (totalInterestAdded > 0) {
+			vstOperator.mint(safetyVault, totalInterestAdded);
 		}
 	}
 

@@ -12,6 +12,7 @@ interface IInterestManager {
 
 	error NotTroveManager();
 	error ErrorModuleAlreadySet();
+	error ModuleNotActive();
 
 	function increaseDebt(
 		address _token,
