@@ -15,6 +15,7 @@ export class Deployer {
 	hre: HardhatRuntimeEnvironment;
 	safetyVault?: Contract;
 	interestManager?: Contract;
+	ZERO_ADDRESS: string = "0x0000000000000000000000000000000000000000";
 
 	constructor(config: IDeployConfig, hre: HardhatRuntimeEnvironment) {
 		this.hre = hre;
@@ -30,7 +31,9 @@ export class Deployer {
 
 		this.safetyVault = await this.helper.deployUpgradeableContractWithName(
 			"SafetyVault",
-			"SafetyVault"
+			"SafetyVault",
+			"setUp",
+			contractsConfig.vst
 		);
 
 		this.interestManager =
@@ -81,16 +84,21 @@ export class Deployer {
 				"setUp",
 				this.interestManager!.address,
 				module.name,
-				module.symbole,
 				module.risk
 			);
 
-			await this.helper.sendAndWaitForTransaction(
-				this.interestManager!.setModuleFor(
-					module.linkedToken,
-					contract.address
-				)
-			);
+			if (
+				(await this.interestManager!.getInterestModule(
+					module.linkedToken
+				)) == this.ZERO_ADDRESS
+			) {
+				await this.helper.sendAndWaitForTransaction(
+					this.interestManager!.setModuleFor(
+						module.linkedToken,
+						contract.address
+					)
+				);
+			}
 
 			await this.transferOwnership(contract, contractConfig.admin);
 		}

@@ -17,35 +17,30 @@ const config: IDeployConfig = {
 			{
 				linkedToken: "0x0000000000000000000000000000000000000000",
 				name: "Module ETH",
-				symbole: "vEIR-ETH",
 				risk: 0,
 			},
 			//gOHM
 			{
 				linkedToken: "0x8D9bA570D6cb60C7e3e0F31343Efe75AB8E65FB1",
 				name: "Module gOHM",
-				symbole: "vEIR-GOHM",
 				risk: 1,
 			},
 			//GMX
 			{
 				linkedToken: "0xfc5A1A6EB076a2C7aD06eD22C90d7E710E35ad0a",
 				name: "Module GMX",
-				symbole: "vEIR-GMX",
 				risk: 2,
 			},
 			//DPX
 			{
 				linkedToken: "0x6c2c06790b3e3e3c38e12ee22f8183b37a13ee55",
 				name: "Module DPX",
-				symbole: "vEIR-DPX",
 				risk: 1,
 			},
 			//GLP
 			{
 				linkedToken: "0x2F546AD4eDD93B956C8999Be404cdCAFde3E89AE",
 				name: "Module GLP",
-				symbole: "vEIR-GLP",
 				risk: 2,
 			},
 		],

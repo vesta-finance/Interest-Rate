@@ -200,6 +200,16 @@ contract VestaInterestManagerTest is BaseTest {
 		underTest.increaseDebt(mockTokenA, user, 1e18);
 	}
 
+	function test_increaseDebt_asTroveManager_givenNonExistantModule_returnsZero()
+		external
+		prankAs(mockTroveManager)
+	{
+		_expectUpdateEIRCall(mockModuleA, DEFAULT_VST_PRICE);
+		_expectUpdateEIRCall(mockModuleB, DEFAULT_VST_PRICE);
+
+		assertEq(underTest.increaseDebt(address(0), user, 100e18), 0);
+	}
+
 	function test_increaseDebt_asTroveManager_thenUpdateModulesAndCallTokenModule()
 		external
 		prankAs(mockTroveManager)
@@ -290,6 +300,16 @@ contract VestaInterestManagerTest is BaseTest {
 		underTest.decreaseDebt(mockTokenA, user, 1e18);
 	}
 
+	function test_decreaseDebt_asTroveManager_givenNonExistantModule_returnsZero()
+		external
+		prankAs(mockTroveManager)
+	{
+		_expectUpdateEIRCall(mockModuleA, DEFAULT_VST_PRICE);
+		_expectUpdateEIRCall(mockModuleB, DEFAULT_VST_PRICE);
+
+		assertEq(underTest.decreaseDebt(address(0), user, 100e18), 0);
+	}
+
 	function test_decreaseDebt_asTroveManager_thenUpdateModulesAndCallTokenModule()
 		external
 		prankAs(mockTroveManager)
@@ -375,6 +395,44 @@ contract VestaInterestManagerTest is BaseTest {
 		emit DebtChanged(mockTokenA, user, 300e18);
 
 		underTest.decreaseDebt(mockTokenA, user, 300e18);
+	}
+
+	function test_exit_asUser_thenReverts() external prankAs(user) {
+		vm.expectRevert(REVERT_NOT_TROVE_MANAGER);
+		underTest.exit(mockTokenA, user);
+	}
+
+	function test_exit_asTroveManager_givenNonExistantModule_thenReturnsZero()
+		external
+		prankAs(mockTroveManager)
+	{
+		_expectUpdateEIRCall(mockModuleA, DEFAULT_VST_PRICE);
+		_expectUpdateEIRCall(mockModuleB, DEFAULT_VST_PRICE);
+
+		assertEq(underTest.exit(address(0), user), 0);
+	}
+
+	function test_exit_asTroveManager_thenCallsExitAndReturnsInterestPendingAndEmitDebtChanged()
+		external
+		prankAs(mockTroveManager)
+	{
+		_expectUpdateEIRCall(mockModuleA, DEFAULT_VST_PRICE);
+		_expectUpdateEIRCall(mockModuleB, DEFAULT_VST_PRICE);
+
+		uint256 interestAddedExpected = 992e18;
+
+		vm.mockCall(
+			mockModuleA,
+			abi.encodeWithSelector(IModuleInterest.exit.selector, user),
+			abi.encode(interestAddedExpected)
+		);
+
+		vm.expectEmit(true, true, true, true);
+		emit DebtChanged(mockTokenA, user, 0);
+
+		uint256 returnedValue = underTest.exit(mockTokenA, user);
+
+		assertEq(returnedValue, interestAddedExpected);
 	}
 
 	function test_updateModules_givenTimePassed_thenUpdatesAndMintAndEmitsInterestMintedEvent()

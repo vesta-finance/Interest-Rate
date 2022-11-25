@@ -1,0 +1,30 @@
+{
+  "SafetyVault": {
+    "address": "0x2f89838f8903a817b8e6c114375d66EfD9Bc207a",
+    "proxyAdmin": "0xAEA5875729DD6C5B04980a6b35693d48795BeE0c"
+  },
+  "VestaInterestManager": {
+    "address": "0x0F5d5E424765Bf3B49f932F0e9b8E6f3791D33B1",
+    "proxyAdmin": "0xAEA5875729DD6C5B04980a6b35693d48795BeE0c"
+  },
+  "Module ETH": {
+    "address": "0x3B19Ed9c13112CdaB31Be7972971382F5418f51D",
+    "proxyAdmin": "0xAEA5875729DD6C5B04980a6b35693d48795BeE0c"
+  },
+  "Module gOHM": {
+    "address": "0x740e3dE7BFA7F09B61AB4CE00b59EBD9267Af031",
+    "proxyAdmin": "0xAEA5875729DD6C5B04980a6b35693d48795BeE0c"
+  },
+  "Module GMX": {
+    "address": "0x561D8D0808Ee59799a922694C1605F38eA5F6e54",
+    "proxyAdmin": "0xAEA5875729DD6C5B04980a6b35693d48795BeE0c"
+  },
+  "Module DPX": {
+    "address": "0x9F4ac763ce2fD63243edB42D2df8c57ED759699c",
+    "proxyAdmin": "0xAEA5875729DD6C5B04980a6b35693d48795BeE0c"
+  },
+  "Module GLP": {
+    "address": "0xf5Ecb997039BB1D2c1Dd826A7B1609b0FB5a4018",
+    "proxyAdmin": "0xAEA5875729DD6C5B04980a6b35693d48795BeE0c"
+  }
+}
