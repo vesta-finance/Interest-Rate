@@ -70,36 +70,61 @@ contract VestaInterestManager is IInterestManager, OwnableUpgradeable {
 		address _token,
 		address _user,
 		uint256 _debt
-	) external override onlyTroveManager returns (uint256 interestDebt_) {
+	) external override onlyTroveManager returns (uint256 interestAdded_) {
 		updateModules();
 
 		IModuleInterest module = IModuleInterest(
 			IModuleInterest(getInterestModule(_token))
 		);
 
-		interestDebt_ = module.increaseDebt(_user, _debt);
+		if (address(module) == address(0)) return 0;
+
+		interestAdded_ = module.increaseDebt(_user, _debt);
 
 		emit DebtChanged(_token, _user, module.getDebtOf(_user));
 
-		return interestDebt_;
+		return interestAdded_;
 	}
 
 	function decreaseDebt(
 		address _token,
 		address _user,
 		uint256 _debt
-	) external override onlyTroveManager returns (uint256 interestDebt_) {
+	) external override onlyTroveManager returns (uint256 interestAdded_) {
 		updateModules();
 
 		IModuleInterest module = IModuleInterest(
 			IModuleInterest(getInterestModule(_token))
 		);
 
-		interestDebt_ = module.decreaseDebt(_user, _debt);
+		if (address(module) == address(0)) return 0;
+
+		interestAdded_ = module.decreaseDebt(_user, _debt);
 
 		emit DebtChanged(_token, _user, module.getDebtOf(_user));
 
-		return interestDebt_;
+		return interestAdded_;
+	}
+
+	function exit(address _token, address _user)
+		external
+		override
+		onlyTroveManager
+		returns (uint256 interestAdded_)
+	{
+		updateModules();
+
+		IModuleInterest module = IModuleInterest(
+			IModuleInterest(getInterestModule(_token))
+		);
+
+		if (address(module) == address(0)) return 0;
+
+		interestAdded_ = module.exit(_user);
+
+		emit DebtChanged(_token, _user, 0);
+
+		return interestAdded_;
 	}
 
 	function updateModules() public {
@@ -132,21 +157,25 @@ contract VestaInterestManager is IInterestManager, OwnableUpgradeable {
 	{
 		IModuleInterest module = IModuleInterest(getInterestModule(_token));
 
-		return (
-			module.getDebtOf(_user),
-			module.getNotEmittedInterestRate(_user)
-		);
+		return
+			(address(module) == address(0))
+				? (0, 0)
+				: (
+					module.getDebtOf(_user),
+					module.getNotEmittedInterestRate(_user)
+				);
 	}
 
 	function getInterestModule(address _token)
 		public
 		view
+		override
 		returns (address)
 	{
 		return interestByTokens[_token];
 	}
 
-	function getModules() external view returns (address[] memory) {
+	function getModules() external view override returns (address[] memory) {
 		return interestModules;
 	}
 

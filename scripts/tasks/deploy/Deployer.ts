@@ -30,7 +30,9 @@ export class Deployer {
 
 		this.safetyVault = await this.helper.deployUpgradeableContractWithName(
 			"SafetyVault",
-			"SafetyVault"
+			"SafetyVault",
+			"setUp",
+			contractsConfig.vst
 		);
 
 		this.interestManager =
@@ -53,16 +55,16 @@ export class Deployer {
 			contractsConfig.admin
 		);
 
-		if (
-			(await this.hre.upgrades.admin.getInstance()).address !=
-			contractsConfig.admin
-		) {
-			await this.helper.sendAndWaitForTransaction(
-				this.hre.upgrades.admin.transferProxyAdminOwnership(
-					contractsConfig.admin
-				)
-			);
-		}
+		// if (
+		// 	(await this.hre.upgrades.admin.getInstance()).address !=
+		// 	contractsConfig.admin
+		// ) {
+		// 	await this.helper.sendAndWaitForTransaction(
+		// 		this.hre.upgrades.admin.transferProxyAdminOwnership(
+		// 			contractsConfig.admin
+		// 		)
+		// 	);
+		// }
 	}
 
 	async deployModule(contractConfig: ContractConfig) {
@@ -97,6 +99,8 @@ export class Deployer {
 	}
 
 	async transferOwnership(contract: Contract, admin: string) {
+		return;
+
 		if ((await contract.owner()) != contract.admin && admin != undefined) {
 			await this.helper.sendAndWaitForTransaction(
 				contract.transferOwnership(admin)

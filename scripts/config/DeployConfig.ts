@@ -15,7 +15,6 @@ export interface ContractConfig {
 export interface ModuleConfig {
 	linkedToken: string;
 	name: string;
-	symbole: string;
 	risk: number;
 }
 

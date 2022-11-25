@@ -74,42 +74,22 @@ contract VestaEIRTest is BaseTest {
 		underTest = new VestaEIR();
 
 		vm.prank(owner);
-		underTest.setUp(
-			mockInterestManager,
-			"Vesta EIR Test Module",
-			"vETM",
-			0
-		);
+		underTest.setUp(mockInterestManager, "Vesta EIR Test Module", 0);
 	}
 
 	function test_setup_thenCallerIsOwner() external prankAs(owner) {
 		underTest = new VestaEIR();
-		underTest.setUp(
-			mockInterestManager,
-			"Vesta EIR Test Module",
-			"vETM",
-			0
-		);
+		underTest.setUp(mockInterestManager, "Vesta EIR Test Module", 0);
 
 		assertEq(underTest.owner(), owner);
 	}
 
 	function test_setup_whenAlreadyInitialized_thenReverts() external {
 		underTest = new VestaEIR();
-		underTest.setUp(
-			mockInterestManager,
-			"Vesta EIR Test Module",
-			"vETM",
-			0
-		);
+		underTest.setUp(mockInterestManager, "Vesta EIR Test Module", 0);
 
 		vm.expectRevert(REVERT_ALREADY_INITIALIZED);
-		underTest.setUp(
-			mockInterestManager,
-			"Vesta EIR Test Module",
-			"vETM",
-			0
-		);
+		underTest.setUp(mockInterestManager, "Vesta EIR Test Module", 0);
 	}
 
 	function test_setup_thenContractCorrectlyConfigured()
@@ -118,12 +98,7 @@ contract VestaEIRTest is BaseTest {
 	{
 		underTest = new VestaEIR();
 
-		underTest.setUp(
-			mockInterestManager,
-			"Vesta EIR Test Module",
-			"vETM",
-			1
-		);
+		underTest.setUp(mockInterestManager, "Vesta EIR Test Module", 1);
 
 		assertEq(underTest.interestManager(), mockInterestManager);
 		assertEq(underTest.lastUpdate(), block.timestamp);
@@ -136,18 +111,9 @@ contract VestaEIRTest is BaseTest {
 		prankAs(owner)
 	{
 		underTest = new VestaEIR();
-		underTest.setUp(
-			mockInterestManager,
-			"Vesta EIR Test Module",
-			"vETM",
-			1
-		);
+		underTest.setUp(mockInterestManager, "Vesta EIR Test Module", 1);
 
 		assertEq(underTest.name(), "Vesta EIR Test Module");
-		assertEq(underTest.symbol(), "vETM");
-		assertTrue(address(underTest.vat()) != address(0));
-		assertEq(underTest.ilk(), bytes32("VESTA.EIR"));
-		assertTrue(address(underTest.gem()) != address(0));
 	}
 
 	function test_setRisk_asUser_thenReverts() external prankAs(userA) {
@@ -160,7 +126,7 @@ contract VestaEIRTest is BaseTest {
 		prankAs(owner)
 	{
 		uint256 oldCurrentEIR = underTest.currentEIR();
-		uint256 expectingEIR = underTest.getEIR(2, 1e18);
+		uint256 expectingEIR = underTest.calculateEIR(2, 1e18);
 
 		vm.expectEmit(true, true, true, true);
 		emit RiskChanged(2);
@@ -201,9 +167,9 @@ contract VestaEIRTest is BaseTest {
 
 		uint256 emittedInterest = underTest.increaseDebt(userA, debt);
 
-		assertEq(underTest.stake(userA), expectedShare);
+		assertEq(underTest.userShares(userA), expectedShare);
 		assertEq(underTest.getDebtOf(userA), debt);
-		assertEq(underTest.balanceOf(userA), expectedShare);
+		assertEq(underTest.shareOf(userA), expectedShare);
 		assertEq(underTest.totalDebt(), debt);
 		assertEq(emittedInterest, 0);
 	}
@@ -221,8 +187,8 @@ contract VestaEIRTest is BaseTest {
 		uint256 expectShareA = 1e18;
 		uint256 expectShareB = ((expectShareA * debtUserB) / debtUserA);
 
-		assertEq(underTest.total(), expectShareA + expectShareB);
-		assertEq(underTest.stake(userB), expectShareB);
+		assertEq(underTest.totalWeight(), expectShareA + expectShareB);
+		assertEq(underTest.userShares(userB), expectShareB);
 	}
 
 	function test_increaseDebt_asInterestManager_givenUserA_whenNotFirstTimeTimeAndTimePassed_thenApplyInterestRate()
@@ -277,7 +243,7 @@ contract VestaEIRTest is BaseTest {
 
 		uint256 pendingEIRUserA = underTest.getNotEmittedInterestRate(userA);
 		uint256 totalDebt = underTest.totalDebt();
-		uint256 total = underTest.total();
+		uint256 totalWeight = underTest.totalWeight();
 
 		vm.expectEmit(true, true, true, true);
 		emit DebtChanged(userA, (debtA + expectedInterest) - withdrawalA);
@@ -290,8 +256,8 @@ contract VestaEIRTest is BaseTest {
 		uint256 interestRateAdded = underTest.decreaseDebt(userA, withdrawalA);
 
 		assertEq(
-			underTest.stake(userA),
-			(total * ((debtA + pendingEIRUserA) - withdrawalA)) / totalDebt
+			underTest.userShares(userA),
+			(totalWeight * ((debtA + pendingEIRUserA) - withdrawalA)) / totalDebt
 		);
 		assertEq(interestRateAdded, expectedInterest);
 	}
@@ -323,7 +289,7 @@ contract VestaEIRTest is BaseTest {
 
 		assertEq(addedInterestRate, expectedInterestAdded);
 		assertEq(underTest.getDebtOf(userA), 0);
-		assertEq(underTest.stake(userA), 0);
+		assertEq(underTest.userShares(userA), 0);
 	}
 
 	function test_updateEIR_asUser_thenReverts() external prankAs(userA) {
@@ -336,7 +302,7 @@ contract VestaEIRTest is BaseTest {
 		prankAs(mockInterestManager)
 	{
 		uint256 price = 0.92e18;
-		uint256 expectedEIR = underTest.getEIR(0, price);
+		uint256 expectedEIR = underTest.calculateEIR(0, price);
 		uint256 oldEIR = underTest.currentEIR();
 		uint256 lastUpdate = underTest.lastUpdate();
 
@@ -414,25 +380,25 @@ contract VestaEIRTest is BaseTest {
 		assertEq(underTest.getNotEmittedInterestRate(userA), expectedInterest);
 	}
 
-	function test_getEIR_thenIsValid() external {
-		assertEq(underTest.getEIR(0, 0.95e18), 9051);
-		assertEq(underTest.getEIR(0, 0.98e18), 400);
-		assertEq(underTest.getEIR(0, 1e18), 50);
+	function test_calculateEIR_thenIsValid() external {
+		assertEq(underTest.calculateEIR(0, 0.95e18), 9051);
+		assertEq(underTest.calculateEIR(0, 0.98e18), 400);
+		assertEq(underTest.calculateEIR(0, 1e18), 50);
 
-		assertEq(underTest.getEIR(1, 0.98e18), 600);
-		assertEq(underTest.getEIR(1, 1e18), 75);
+		assertEq(underTest.calculateEIR(1, 0.98e18), 600);
+		assertEq(underTest.calculateEIR(1, 1e18), 75);
 
-		assertEq(underTest.getEIR(2, 0.98e18), 1000);
-		assertEq(underTest.getEIR(2, 1e18), 125);
-		assertEq(underTest.getEIR(2, 1.03e18), 6);
-		assertEq(underTest.getEIR(2, 1.05e18), 1);
+		assertEq(underTest.calculateEIR(2, 0.98e18), 1000);
+		assertEq(underTest.calculateEIR(2, 1e18), 125);
+		assertEq(underTest.calculateEIR(2, 1.03e18), 6);
+		assertEq(underTest.calculateEIR(2, 1.05e18), 1);
 	}
 
-	function test_getEIR_whenLowerOrHigherThanLimit_thenReturnsMinMaxValue()
+	function test_calculateEIR_whenLowerOrHigherThanLimit_thenReturnsMinMaxValue()
 		external
 	{
-		assertEq(underTest.getEIR(0, 0.8e18), 9051);
-		assertEq(underTest.getEIR(0, 2e18), 1);
+		assertEq(underTest.calculateEIR(0, 0.8e18), 9051);
+		assertEq(underTest.calculateEIR(0, 2e18), 1);
 	}
 
 	function test_getDebtOf_thenReturnsSameDebt() external {

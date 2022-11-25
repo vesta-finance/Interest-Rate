@@ -67,12 +67,7 @@ contract MockERC20 {
 		return _totalSupply;
 	}
 
-	function balanceOf(address account)
-		public
-		view
-		virtual
-		returns (uint256)
-	{
+	function shareOf(address account) public view virtual returns (uint256) {
 		return _balances[account];
 	}
 
@@ -239,3 +234,4 @@ contract MockERC20 {
 		uint256 amount
 	) internal virtual {}
 }
+

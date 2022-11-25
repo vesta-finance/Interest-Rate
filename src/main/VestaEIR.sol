@@ -16,8 +16,8 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 	using PRBMathUD60x18 for uint256;
 
 	uint256 public constant PRECISION = 1e18;
-	uint256 private YEAR_MINUTE = 1.901285e6;
-	uint256 private constant COMPOUND = 2.71828e18;
+	uint256 public constant YEAR_MINUTE = 1.901285e6;
+	uint256 public constant COMPOUND = 2.71828e18;
 
 	uint256 public currentEIR;
 	uint256 public lastUpdate;
@@ -40,10 +40,9 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 	function setUp(
 		address _interestManager,
 		string memory _moduleName,
-		string memory _moduleSymbol,
 		uint8 _defaultRisk
 	) external initializer {
-		__INIT_ADAPTOR(_moduleName, _moduleSymbol);
+		__INIT_ADAPTOR(_moduleName);
 
 		interestManager = _interestManager;
 		risk = _defaultRisk;
@@ -70,11 +69,11 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 
 		uint256 totalBalance = balances[_vault] += _debt;
 
-		if (total > 0) {
-			newShare = (total * (_debt + addedInterest_)) / totalDebt;
+		if (totalWeight > 0) {
+			newShare = (totalWeight * (_debt + addedInterest_)) / totalDebt;
 		}
 
-		_mint(_vault, newShare);
+		_addShare(_vault, newShare);
 		totalDebt += _debt;
 
 		emit DebtChanged(_vault, totalBalance);
@@ -97,11 +96,11 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 		uint256 balanceTotal = balances[_vault];
 
 		balanceTotal = balances[_vault] -= _debt;
-		if (total > 0 && balanceTotal > 0) {
-			newShare = (total * balanceTotal) / totalDebt;
+		if (totalWeight > 0 && balanceTotal > 0) {
+			newShare = (totalWeight * balanceTotal) / totalDebt;
 		}
-		_burn(_vault, balanceOf(_vault));
-		_mint(_vault, newShare);
+		_exitShare(_vault, shareOf(_vault));
+		_addShare(_vault, newShare);
 
 		totalDebt -= _debt;
 
@@ -123,7 +122,7 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 
 		balances[_vault] = 0;
 
-		_burn(_vault, balanceOf(_vault));
+		_exitShare(_vault, shareOf(_vault));
 
 		return addedInterest_;
 	}
@@ -141,7 +140,7 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 		internal
 		returns (uint256 mintedInterest_)
 	{
-		uint256 newEIR = getEIR(risk, _vstPrice);
+		uint256 newEIR = calculateEIR(risk, _vstPrice);
 		uint256 oldEIR = currentEIR;
 
 		uint256 lastDebt = totalDebt;
@@ -172,10 +171,11 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 		internal
 		returns (uint256 emittedFee_)
 	{
-		if (total > 0) share = Math.add(share, Math.rdiv(_crop(), total));
+		if (totalWeight > 0)
+			share = Math.add(share, Math.rdiv(_crop(), totalWeight));
 
 		uint256 last = crops[_user];
-		uint256 curr = Math.rmul(stake[_user], share);
+		uint256 curr = Math.rmul(userShares[_user], share);
 		if (curr > last) {
 			emittedFee_ = curr - last;
 			balances[_user] += emittedFee_;
@@ -205,7 +205,7 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 		override
 		returns (uint256)
 	{
-		if (total == 0) return 0;
+		if (totalWeight == 0) return 0;
 
 		uint256 minuteDifference = (block.timestamp - lastUpdate) / 1 minutes;
 		uint256 incomingMinting = 0;
@@ -220,15 +220,15 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 
 		// duplicate harvest logic
 		uint256 crop = Math.sub(interestMinted + incomingMinting, stock);
-		uint256 share = Math.add(share, Math.rdiv(crop, total));
+		uint256 newShare = Math.add(share, Math.rdiv(crop, totalWeight));
 
 		uint256 last = this.crops(user);
-		uint256 curr = Math.rmul(this.stake(user), share);
+		uint256 curr = Math.rmul(this.userShares(user), newShare);
 		if (curr > last) return curr - last;
 		return 0;
 	}
 
-	function getEIR(uint8 _risk, uint256 _price)
+	function calculateEIR(uint8 _risk, uint256 _price)
 		public
 		pure
 		returns (uint256)
@@ -239,7 +239,7 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 			_price = 1.05e18;
 		}
 
-		int256 P = ((int256(_price) - 1 ether)) / 1e2;
+		int256 P = ((int256(_price) - 1 ether)) * -1.0397e4;
 
 		uint256 a;
 
@@ -251,7 +251,7 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 			a = 1.25e4;
 		}
 
-		int256 exp = (-1.0397e4 * P);
+		int256 exp = (P / 1e2);
 		return uint256(FullMath.mulDivRoundingUp(a, uint256(exp.exp()), 1e20)); // Scale to BPS
 	}
 
