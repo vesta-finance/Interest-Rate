@@ -20,8 +20,6 @@ abstract contract CropJoinAdapter is ICropJoinAdapter, OwnableUpgradeable {
 	mapping(address => uint256) public crops; // [wad]
 	mapping(address => uint256) public userShares; // [wad]
 
-	uint256 internal to18ConversionFactor;
-	uint256 internal toGemConversionFactor;
 	uint256 public interestMinted;
 
 	uint256[49] private __gap;
@@ -56,7 +54,7 @@ abstract contract CropJoinAdapter is ICropJoinAdapter, OwnableUpgradeable {
 
 			require(int256(wad) > 0);
 
-			totalWeight = totalWeight + wad;
+			totalWeight += wad;
 			userShares[urn] += wad;
 		}
 		crops[urn] = FullMath.rmulup(userShares[urn], share);
@@ -69,8 +67,8 @@ abstract contract CropJoinAdapter is ICropJoinAdapter, OwnableUpgradeable {
 
 			require(int256(wad) > 0);
 
-			totalWeight = totalWeight - wad;
-			userShares[guy] = userShares[guy] - wad;
+			totalWeight -= wad;
+			userShares[guy] -= wad;
 		}
 		crops[guy] = FullMath.rmulup(userShares[guy], share);
 		emit Exit(val);

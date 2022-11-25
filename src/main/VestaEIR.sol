@@ -22,7 +22,6 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 	uint256 public currentEIR;
 	uint256 public lastUpdate;
 	uint256 public totalDebt;
-	uint8 public currentRisk;
 
 	uint8 public risk;
 
@@ -96,9 +95,11 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 		uint256 balanceTotal = balances[_vault];
 
 		balanceTotal = balances[_vault] -= _debt;
+
 		if (totalWeight > 0 && balanceTotal > 0) {
 			newShare = (totalWeight * balanceTotal) / totalDebt;
 		}
+
 		_exitShare(_vault, shareOf(_vault));
 		_addShare(_vault, newShare);
 
