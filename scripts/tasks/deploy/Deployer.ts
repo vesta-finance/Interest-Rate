@@ -55,16 +55,16 @@ export class Deployer {
 			contractsConfig.admin
 		);
 
-		// if (
-		// 	(await this.hre.upgrades.admin.getInstance()).address !=
-		// 	contractsConfig.admin
-		// ) {
-		// 	await this.helper.sendAndWaitForTransaction(
-		// 		this.hre.upgrades.admin.transferProxyAdminOwnership(
-		// 			contractsConfig.admin
-		// 		)
-		// 	);
-		// }
+		if (
+			(await this.hre.upgrades.admin.getInstance()).address !=
+			contractsConfig.admin
+		) {
+			await this.helper.sendAndWaitForTransaction(
+				this.hre.upgrades.admin.transferProxyAdminOwnership(
+					contractsConfig.admin
+				)
+			);
+		}
 	}
 
 	async deployModule(contractConfig: ContractConfig) {
@@ -83,7 +83,6 @@ export class Deployer {
 				"setUp",
 				this.interestManager!.address,
 				module.name,
-				module.symbole,
 				module.risk
 			);
 
@@ -99,8 +98,6 @@ export class Deployer {
 	}
 
 	async transferOwnership(contract: Contract, admin: string) {
-		return;
-
 		if ((await contract.owner()) != contract.admin && admin != undefined) {
 			await this.helper.sendAndWaitForTransaction(
 				contract.transferOwnership(admin)
