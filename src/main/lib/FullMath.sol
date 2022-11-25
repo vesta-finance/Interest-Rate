@@ -5,6 +5,9 @@ pragma solidity >=0.8.0;
 /// @notice Facilitates multiplication and division that can have overflow of an intermediate value without any loss of precision
 /// @dev Handles "phantom overflow" i.e., allows multiplication and division where an intermediate value overflows 256 bits
 library FullMath {
+	uint256 constant WAD = 10**18;
+	uint256 constant RAY = 10**27;
+
 	/// @notice Calculates floor(a×b÷denominator) with full precision. Throws if result overflows a uint256 or denominator == 0
 	/// @param a The multiplicand
 	/// @param b The multiplier
@@ -124,6 +127,34 @@ library FullMath {
 				result++;
 			}
 		}
+	}
+
+	function divup(uint256 x, uint256 y) internal pure returns (uint256 z) {
+		z = (x + (y - 1)) / y;
+	}
+
+	function wmul(uint256 x, uint256 y) internal pure returns (uint256 z) {
+		z = (x * y) / WAD;
+	}
+
+	function wdiv(uint256 x, uint256 y) internal pure returns (uint256 z) {
+		z = (x * WAD) / y;
+	}
+
+	function wdivup(uint256 x, uint256 y) internal pure returns (uint256 z) {
+		z = divup((x * WAD), y);
+	}
+
+	function rmul(uint256 x, uint256 y) internal pure returns (uint256 z) {
+		z = (x * y) / RAY;
+	}
+
+	function rmulup(uint256 x, uint256 y) internal pure returns (uint256 z) {
+		z = divup((x * y), RAY);
+	}
+
+	function rdiv(uint256 x, uint256 y) internal pure returns (uint256 z) {
+		z = mulDiv(x, RAY, y);
 	}
 }
 

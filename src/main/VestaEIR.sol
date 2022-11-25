@@ -5,7 +5,7 @@ pragma solidity ^0.8.17;
 import { IModuleInterest } from "./interface/IModuleInterest.sol";
 import { IInterestManager } from "./interface/IInterestManager.sol";
 
-import { CropJoinAdapter, Math } from "./vendor/CropJoinAdapter.sol";
+import { CropJoinAdapter } from "./vendor/CropJoinAdapter.sol";
 import { FullMath } from "./lib/FullMath.sol";
 
 import { PRBMathSD59x18 } from "prb-math/PRBMathSD59x18.sol";
@@ -172,10 +172,10 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 		returns (uint256 emittedFee_)
 	{
 		if (totalWeight > 0)
-			share = Math.add(share, Math.rdiv(_crop(), totalWeight));
+			share = share + FullMath.rdiv(_crop(), totalWeight);
 
 		uint256 last = crops[_user];
-		uint256 curr = Math.rmul(userShares[_user], share);
+		uint256 curr = FullMath.rmul(userShares[_user], share);
 		if (curr > last) {
 			emittedFee_ = curr - last;
 			balances[_user] += emittedFee_;
@@ -219,11 +219,11 @@ contract VestaEIR is CropJoinAdapter, IModuleInterest {
 		}
 
 		// duplicate harvest logic
-		uint256 crop = Math.sub(interestMinted + incomingMinting, stock);
-		uint256 newShare = Math.add(share, Math.rdiv(crop, totalWeight));
+		uint256 crop = (interestMinted + incomingMinting) - stock;
+		uint256 newShare = share + FullMath.rdiv(crop, totalWeight);
 
 		uint256 last = this.crops(user);
-		uint256 curr = Math.rmul(this.userShares(user), newShare);
+		uint256 curr = FullMath.rmul(this.userShares(user), newShare);
 		if (curr > last) return curr - last;
 		return 0;
 	}
