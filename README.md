@@ -2,6 +2,8 @@
 
 Vesta Protocol V1 Interest Rate Module.
 
+[Contract Addresses](https://github.com/vesta-finance/Interest-Rate/tree/master/scripts/deployments)
+
 ## Article
 
 [Read more](https://curia.vestafinance.xyz/t/introducing-the-vesta-reference-rate/137)
